@@ -21,12 +21,14 @@ class CourseProvider with ChangeNotifier {
 
   // 筛选条件缓存
   Map<String, dynamic>? _filterConditions;
+  Map<String, Map<String, dynamic>> _courseCountInfo = {}; // 课程名额信息
 
   List<Map<String, dynamic>> get courses => _courses;
   List<Map<String, dynamic>> get selectedCourses => _selectedCourses;
   Map<String, dynamic>? get queryCondition => _queryCondition;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  Map<String, Map<String, dynamic>> get courseCountInfo => _courseCountInfo;
   int get currentPage => _currentPage;
   int get totalPages => _totalPages;
   int get totalRows => _totalRows;
@@ -174,6 +176,15 @@ class CourseProvider with ChangeNotifier {
       _currentPage = pageInfo['currentPage'] as int;
       _totalPages = pageInfo['totalPages'] as int;
       _totalRows = pageInfo['totalRows'] as int;
+
+      // 批量获取课程名额信息
+      if (_courses.isNotEmpty) {
+        final lessonIds =
+            _courses.map((course) => course['id'] as int).toList();
+        _courseCountInfo = await getBatchCountInfo(lessonIds);
+      } else {
+        _courseCountInfo = {};
+      }
     } catch (e) {
       _errorMessage = '搜索课程失败: $e';
       debugPrint(_errorMessage);
@@ -256,15 +267,45 @@ class CourseProvider with ChangeNotifier {
     }
   }
 
-  void addRobTarget(Map<String, dynamic> course) {
+  Future<Map<String, Map<String, dynamic>>> getBatchCountInfo(
+      List<int> lessonIDs) async {
+    try {
+      final batchData = await _apiService.getBatchCountInfo(lessonIDs);
+      final result = <String, Map<String, dynamic>>{};
+
+      for (final entry in batchData.entries) {
+        final lessonId = entry.key;
+        final countString = entry.value;
+        // 解析格式: "总选课人数-预选人数-预跨选人数-跨选人数"
+        final parts = countString.split('-');
+        if (parts.length >= 4) {
+          final totalSelected = int.tryParse(parts[0]) ?? 0;
+          final preSelected = int.tryParse(parts[1]) ?? 0;
+          final preCrossSelected = int.tryParse(parts[2]) ?? 0;
+          final crossSelected = int.tryParse(parts[3]) ?? 0;
+          final regularSelected = totalSelected - crossSelected;
+
+          result[lessonId] = {
+            'stdCount': regularSelected, // 正选人数
+            'amStdCount': crossSelected, // 跨选人数
+            'preStdCount': preSelected, // 预选人数
+            'preAmStdCount': preCrossSelected, // 预跨选人数
+            'totalSelected': totalSelected, // 总选课人数
+          };
+        }
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('批量获取课程名额失败: $e');
+      return {};
+    }
+  }
+
+  void addRobTarget(Map<String, dynamic> course) async {
     if (!_robTargets.any((target) => target['id'] == course['id'])) {
       _robTargets.add({
-        'id': course['id'],
-        'name': course['course']['nameZh'] ??
-            course['course']['nameEn'] ??
-            course['code'] ??
-            '',
-        'virtualCost': course['virtualCost'] ?? 0,
+        ...course, // 保留完整的course对象
         'priority': _robTargets.length + 1,
       });
       // 初始化监控状态
@@ -275,6 +316,23 @@ class CourseProvider with ChangeNotifier {
         'lastChecked': null,
         'status': '未监控',
       };
+
+      // 获取名额信息
+      try {
+        final countInfo = await getCountInfo(course['id']);
+        if (countInfo != null) {
+          _robTargetStatuses[course['id']] = {
+            ..._robTargetStatuses[course['id']]!,
+            'stdCount': countInfo['stdCount'] ?? 0,
+            'limitCount': course['limitCount'] ?? 0,
+            'available':
+                (course['limitCount'] ?? 0) - (countInfo['stdCount'] ?? 0),
+          };
+        }
+      } catch (e) {
+        debugPrint('获取抢课目标名额信息失败: $e');
+      }
+
       notifyListeners();
     }
   }
@@ -286,15 +344,10 @@ class CourseProvider with ChangeNotifier {
   }
 
   // 监控相关方法
-  void addMonitorTarget(Map<String, dynamic> course) {
+  void addMonitorTarget(Map<String, dynamic> course) async {
     if (!_monitorTargets.any((target) => target['id'] == course['id'])) {
       _monitorTargets.add({
-        'id': course['id'],
-        'name': course['course']['nameZh'] ??
-            course['course']['nameEn'] ??
-            course['code'] ??
-            '',
-        'virtualCost': course['virtualCost'] ?? 0,
+        ...course, // 保留完整的course对象
         'priority': _monitorTargets.length + 1,
       });
       // 初始化监控状态
@@ -305,6 +358,23 @@ class CourseProvider with ChangeNotifier {
         'lastChecked': null,
         'status': '未监控',
       };
+
+      // 获取名额信息
+      try {
+        final countInfo = await getCountInfo(course['id']);
+        if (countInfo != null) {
+          _monitorTargetStatuses[course['id']] = {
+            ..._monitorTargetStatuses[course['id']]!,
+            'stdCount': countInfo['stdCount'] ?? 0,
+            'limitCount': course['limitCount'] ?? 0,
+            'available':
+                (course['limitCount'] ?? 0) - (countInfo['stdCount'] ?? 0),
+          };
+        }
+      } catch (e) {
+        debugPrint('获取监控目标名额信息失败: $e');
+      }
+
       notifyListeners();
     }
   }
@@ -351,9 +421,11 @@ class CourseProvider with ChangeNotifier {
           // 如果有余量，发送通知并自动抢课
           if (available > 0) {
             await NotificationService.showCourseAvailableNotification(
-              target['courseName'] ?? '未知课程',
-              target['teacherName'] ?? '未知教师',
+              target['course']?['nameZh'] ??
+                  target['course']?['nameEn'] ??
+                  '未知课程',
               available,
+              countInfo['limitCount'],
             );
             final success = await addCourse(
               studentID,

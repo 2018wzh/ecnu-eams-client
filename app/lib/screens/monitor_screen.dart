@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/course_provider.dart';
+import '../widgets/course_card.dart';
 
 class MonitorScreen extends StatefulWidget {
   const MonitorScreen({super.key});
@@ -145,43 +146,25 @@ class _MonitorScreenState extends State<MonitorScreen> {
                         final status = courseProvider
                                 .monitorTargetStatuses[target['id']] ??
                             {};
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            title: Text(target['course']?['nameZh'] ??
-                                target['name'] ??
-                                ''),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('优先级: ${target['priority']}'),
-                                if (courseProvider.isMonitoring &&
-                                    status.isNotEmpty)
-                                  Text(
-                                    '状态: ${status['status']} | 余量: ${status['available']}/${status['limitCount']} | 已选: ${status['stdCount']}',
-                                    style: TextStyle(
-                                      color: status['available'] > 0
-                                          ? Colors.green
-                                          : Colors.red,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                if (status['lastChecked'] != null)
-                                  Text(
-                                    '最后检查: ${status['lastChecked'].hour.toString().padLeft(2, '0')}:${status['lastChecked'].minute.toString().padLeft(2, '0')}:${status['lastChecked'].second.toString().padLeft(2, '0')}',
-                                    style: const TextStyle(
-                                        fontSize: 10, color: Colors.grey),
-                                  ),
-                              ],
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                courseProvider
-                                    .removeMonitorTarget(target['id']);
-                              },
-                            ),
-                          ),
+                        return CourseCard(
+                          course: target,
+                          priority: target['priority'],
+                          status:
+                              courseProvider.isMonitoring && status.isNotEmpty
+                                  ? status
+                                  : null,
+                          countInfo: status.isNotEmpty
+                              ? {
+                                  'stdCount': status['stdCount'] ?? 0,
+                                  'amStdCount': 0, // 监控目标可能没有跨专业信息
+                                }
+                              : null,
+                          showDropButton: true,
+                          showCountInfo: true,
+                          onDrop: () {
+                            courseProvider.removeMonitorTarget(target['id']);
+                          },
+                          showDetailedInfo: false,
                         );
                       },
                     ),

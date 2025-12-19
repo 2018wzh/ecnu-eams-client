@@ -274,8 +274,13 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
                                         itemBuilder: (context, index) {
                                           final course =
                                               courseProvider.courses[index];
+                                          final countInfo =
+                                              courseProvider.courseCountInfo[
+                                                  course['id'].toString()];
                                           return CourseCard(
                                             course: course,
+                                            countInfo: countInfo,
+                                            showCountInfo: true,
                                             onTap: () {
                                               _showCourseDetail(course,
                                                   authProvider, courseProvider);

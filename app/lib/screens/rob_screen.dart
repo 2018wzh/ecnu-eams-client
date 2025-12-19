@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/course_provider.dart';
+import '../widgets/course_card.dart';
 
 class RobScreen extends StatefulWidget {
   const RobScreen({super.key});
@@ -189,20 +190,24 @@ class _RobScreenState extends State<RobScreen> {
                       itemCount: courseProvider.robTargets.length,
                       itemBuilder: (context, index) {
                         final target = courseProvider.robTargets[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            title: Text(target['course']?['nameZh'] ??
-                                target['name'] ??
-                                ''),
-                            subtitle: Text('优先级: ${target['priority']}'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                courseProvider.removeRobTarget(target['id']);
-                              },
-                            ),
-                          ),
+                        final status =
+                            courseProvider.robTargetStatuses[target['id']] ??
+                                {};
+                        return CourseCard(
+                          course: target,
+                          priority: target['priority'],
+                          countInfo: status.isNotEmpty
+                              ? {
+                                  'stdCount': status['stdCount'] ?? 0,
+                                  'amStdCount': 0, // 抢课目标可能没有跨专业信息
+                                }
+                              : null,
+                          showDropButton: true,
+                          showCountInfo: true,
+                          onDrop: () {
+                            courseProvider.removeRobTarget(target['id']);
+                          },
+                          showDetailedInfo: false,
                         );
                       },
                     ),
