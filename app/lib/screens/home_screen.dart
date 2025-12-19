@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import 'course_search_screen.dart';
 import 'selected_courses_screen.dart';
 import 'rob_screen.dart';
+import 'monitor_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -78,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
           CourseSearchScreen(),
           SelectedCoursesScreen(),
           RobScreen(),
+          MonitorScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -103,6 +105,10 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(
             icon: Icon(Icons.flash_on),
             label: '抢课',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.visibility),
+            label: '监控',
           ),
         ],
       ),

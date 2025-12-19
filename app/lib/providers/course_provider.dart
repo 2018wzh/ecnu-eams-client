@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 
 class CourseProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -39,11 +40,24 @@ class CourseProvider with ChangeNotifier {
   Timer? _robTimer;
   Map<int, Map<String, dynamic>> _robTargetStatuses = {}; // 监控状态
 
+  // 监控相关
+  bool _isMonitoring = false;
+  List<Map<String, dynamic>> _monitorTargets = [];
+  Duration _monitorInterval = const Duration(seconds: 5);
+  Timer? _monitorTimer;
+  Map<int, Map<String, dynamic>> _monitorTargetStatuses = {}; // 监控状态
+
   bool get isRobbing => _isRobbing;
   List<Map<String, dynamic>> get robTargets => _robTargets;
   DateTime? get scheduledStartTime => _scheduledStartTime;
   Duration get robInterval => _robInterval;
   Map<int, Map<String, dynamic>> get robTargetStatuses => _robTargetStatuses;
+
+  bool get isMonitoring => _isMonitoring;
+  List<Map<String, dynamic>> get monitorTargets => _monitorTargets;
+  Duration get monitorInterval => _monitorInterval;
+  Map<int, Map<String, dynamic>> get monitorTargetStatuses =>
+      _monitorTargetStatuses;
 
   Future<void> loadQueryCondition(int turnID) async {
     try {
@@ -268,6 +282,118 @@ class CourseProvider with ChangeNotifier {
   void removeRobTarget(int lessonID) {
     _robTargets.removeWhere((target) => target['id'] == lessonID);
     _robTargetStatuses.remove(lessonID);
+    notifyListeners();
+  }
+
+  // 监控相关方法
+  void addMonitorTarget(Map<String, dynamic> course) {
+    if (!_monitorTargets.any((target) => target['id'] == course['id'])) {
+      _monitorTargets.add({
+        'id': course['id'],
+        'name': course['course']['nameZh'] ??
+            course['course']['nameEn'] ??
+            course['code'] ??
+            '',
+        'virtualCost': course['virtualCost'] ?? 0,
+        'priority': _monitorTargets.length + 1,
+      });
+      // 初始化监控状态
+      _monitorTargetStatuses[course['id']] = {
+        'available': 0,
+        'limitCount': 0,
+        'stdCount': 0,
+        'lastChecked': null,
+        'status': '未监控',
+      };
+      notifyListeners();
+    }
+  }
+
+  void removeMonitorTarget(int lessonID) {
+    _monitorTargets.removeWhere((target) => target['id'] == lessonID);
+    _monitorTargetStatuses.remove(lessonID);
+    notifyListeners();
+  }
+
+  void setMonitorInterval(Duration interval) {
+    _monitorInterval = interval;
+    notifyListeners();
+  }
+
+  Future<void> startMonitoring(int studentID, int turnID) async {
+    if (_monitorTargets.isEmpty) return;
+
+    _isMonitoring = true;
+    notifyListeners();
+
+    // 使用Timer实现监控
+    _monitorTimer = Timer.periodic(_monitorInterval, (timer) async {
+      if (!_isMonitoring || _monitorTargets.isEmpty) {
+        timer.cancel();
+        return;
+      }
+
+      for (var target in List.from(_monitorTargets)) {
+        final countInfo = await getCountInfo(target['id']);
+        if (countInfo != null) {
+          final available =
+              (countInfo['limitCount'] as int) - (countInfo['stdCount'] as int);
+          // 更新监控状态
+          _monitorTargetStatuses[target['id']] = {
+            'available': available,
+            'limitCount': countInfo['limitCount'],
+            'stdCount': countInfo['stdCount'],
+            'lastChecked': DateTime.now(),
+            'status': available > 0 ? '有余量' : '无余量',
+          };
+          notifyListeners();
+
+          // 如果有余量，发送通知并自动抢课
+          if (available > 0) {
+            await NotificationService.showCourseAvailableNotification(
+              target['courseName'] ?? '未知课程',
+              target['teacherName'] ?? '未知教师',
+              available,
+            );
+            final success = await addCourse(
+              studentID,
+              turnID,
+              target['id'],
+              target['virtualCost'],
+            );
+            if (success) {
+              removeMonitorTarget(target['id']);
+            }
+          }
+        } else {
+          // 获取失败时更新状态
+          _monitorTargetStatuses[target['id']] = {
+            'available': 0,
+            'limitCount': 0,
+            'stdCount': 0,
+            'lastChecked': DateTime.now(),
+            'status': '获取失败',
+          };
+          notifyListeners();
+        }
+      }
+    });
+  }
+
+  void stopMonitoring() {
+    _isMonitoring = false;
+    _monitorTimer?.cancel();
+    _monitorTimer = null;
+    // 停止时重置监控状态
+    for (var target in _monitorTargets) {
+      _monitorTargetStatuses[target['id']] = {
+        'available': 0,
+        'limitCount': 0,
+        'stdCount': 0,
+        'lastChecked': null,
+        'status': '未监控',
+      };
+    }
     notifyListeners();
   }
 

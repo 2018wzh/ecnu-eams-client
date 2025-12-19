@@ -24,7 +24,7 @@ android {
         applicationId = "com.example.ecnu_eams_client"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 20  // webview_flutter requires minSdk 20
+        minSdk = flutter.minSdkVersion  // webview_flutter requires minSdk 20
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

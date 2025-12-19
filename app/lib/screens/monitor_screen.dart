@@ -3,14 +3,14 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/course_provider.dart';
 
-class RobScreen extends StatefulWidget {
-  const RobScreen({super.key});
+class MonitorScreen extends StatefulWidget {
+  const MonitorScreen({super.key});
 
   @override
-  State<RobScreen> createState() => _RobScreenState();
+  State<MonitorScreen> createState() => _MonitorScreenState();
 }
 
-class _RobScreenState extends State<RobScreen> {
+class _MonitorScreenState extends State<MonitorScreen> {
   final TextEditingController _intervalController = TextEditingController();
 
   @override
@@ -18,32 +18,13 @@ class _RobScreenState extends State<RobScreen> {
     super.initState();
     final courseProvider = context.read<CourseProvider>();
     _intervalController.text =
-        courseProvider.robInterval.inMilliseconds.toString();
+        courseProvider.monitorInterval.inSeconds.toString();
   }
 
   @override
   void dispose() {
     _intervalController.dispose();
     super.dispose();
-  }
-
-  Future<void> _selectScheduledTime(
-      BuildContext context, CourseProvider courseProvider) async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-    if (picked != null) {
-      final now = DateTime.now();
-      final scheduledTime = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        picked.hour,
-        picked.minute,
-      );
-      courseProvider.setScheduledStartTime(scheduledTime);
-    }
   }
 
   @override
@@ -54,8 +35,8 @@ class _RobScreenState extends State<RobScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              color: courseProvider.isRobbing
-                  ? Colors.orange.shade50
+              color: courseProvider.isMonitoring
+                  ? Colors.blue.shade50
                   : Colors.grey.shade100,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,22 +44,22 @@ class _RobScreenState extends State<RobScreen> {
                   Row(
                     children: [
                       Icon(
-                        courseProvider.isRobbing
-                            ? Icons.flash_on
-                            : Icons.flash_off,
-                        color: courseProvider.isRobbing
-                            ? Colors.orange
+                        courseProvider.isMonitoring
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                        color: courseProvider.isMonitoring
+                            ? Colors.blue
                             : Colors.grey,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          courseProvider.isRobbing ? '抢课进行中...' : '抢课已停止',
+                          courseProvider.isMonitoring ? '监控进行中...' : '监控已停止',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                       Switch(
-                        value: courseProvider.isRobbing,
+                        value: courseProvider.isMonitoring,
                         onChanged: (value) {
                           if (value) {
                             if (authProvider.studentID == null ||
@@ -89,65 +70,37 @@ class _RobScreenState extends State<RobScreen> {
                               return;
                             }
 
-                            if (courseProvider.robTargets.isEmpty) {
+                            if (courseProvider.monitorTargets.isEmpty) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('请先添加抢课目标')),
+                                const SnackBar(content: Text('请先添加监控目标')),
                               );
                               return;
                             }
 
-                            courseProvider.startRob(
+                            courseProvider.startMonitoring(
                               int.parse(authProvider.studentID!),
                               authProvider.currentTurn!['id'],
                             );
                           } else {
-                            courseProvider.stopRob();
+                            courseProvider.stopMonitoring();
                           }
                         },
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // 定时开始设置
+                  // 监控间隔设置
                   Row(
                     children: [
-                      const Text('定时开始:'),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: courseProvider.isRobbing
-                              ? null
-                              : () =>
-                                  _selectScheduledTime(context, courseProvider),
-                          child: Text(
-                            courseProvider.scheduledStartTime != null
-                                ? '${courseProvider.scheduledStartTime!.hour.toString().padLeft(2, '0')}:${courseProvider.scheduledStartTime!.minute.toString().padLeft(2, '0')}'
-                                : '选择时间',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: () =>
-                            courseProvider.setScheduledStartTime(null),
-                        icon: const Icon(Icons.clear),
-                        tooltip: '清除定时',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // 间隔设置
-                  Row(
-                    children: [
-                      const Text('间隔(ms):'),
+                      const Text('间隔(s):'),
                       const SizedBox(width: 8),
                       Expanded(
                         child: TextField(
                           controller: _intervalController,
                           keyboardType: TextInputType.number,
-                          enabled: !courseProvider.isRobbing,
+                          enabled: !courseProvider.isMonitoring,
                           decoration: const InputDecoration(
-                            hintText: '500',
+                            hintText: '5',
                             border: OutlineInputBorder(),
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
@@ -155,8 +108,8 @@ class _RobScreenState extends State<RobScreen> {
                           onChanged: (value) {
                             final interval = int.tryParse(value);
                             if (interval != null && interval > 0) {
-                              courseProvider.setRobInterval(
-                                  Duration(milliseconds: interval));
+                              courseProvider.setMonitorInterval(
+                                  Duration(seconds: interval));
                             }
                           },
                         ),
@@ -167,18 +120,18 @@ class _RobScreenState extends State<RobScreen> {
               ),
             ),
             Expanded(
-              child: courseProvider.robTargets.isEmpty
+              child: courseProvider.monitorTargets.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.add_circle_outline,
+                          const Icon(Icons.monitor,
                               size: 64, color: Colors.grey),
                           const SizedBox(height: 16),
-                          const Text('暂无抢课目标'),
+                          const Text('暂无监控目标'),
                           const SizedBox(height: 8),
                           Text(
-                            '在搜索课程页面添加课程到抢课列表',
+                            '在搜索课程页面添加课程到监控列表',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
@@ -186,20 +139,46 @@ class _RobScreenState extends State<RobScreen> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
-                      itemCount: courseProvider.robTargets.length,
+                      itemCount: courseProvider.monitorTargets.length,
                       itemBuilder: (context, index) {
-                        final target = courseProvider.robTargets[index];
+                        final target = courseProvider.monitorTargets[index];
+                        final status = courseProvider
+                                .monitorTargetStatuses[target['id']] ??
+                            {};
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
                           child: ListTile(
                             title: Text(target['course']?['nameZh'] ??
                                 target['name'] ??
                                 ''),
-                            subtitle: Text('优先级: ${target['priority']}'),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('优先级: ${target['priority']}'),
+                                if (courseProvider.isMonitoring &&
+                                    status.isNotEmpty)
+                                  Text(
+                                    '状态: ${status['status']} | 余量: ${status['available']}/${status['limitCount']} | 已选: ${status['stdCount']}',
+                                    style: TextStyle(
+                                      color: status['available'] > 0
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                if (status['lastChecked'] != null)
+                                  Text(
+                                    '最后检查: ${status['lastChecked'].hour.toString().padLeft(2, '0')}:${status['lastChecked'].minute.toString().padLeft(2, '0')}:${status['lastChecked'].second.toString().padLeft(2, '0')}',
+                                    style: const TextStyle(
+                                        fontSize: 10, color: Colors.grey),
+                                  ),
+                              ],
+                            ),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () {
-                                courseProvider.removeRobTarget(target['id']);
+                                courseProvider
+                                    .removeMonitorTarget(target['id']);
                               },
                             ),
                           ),
