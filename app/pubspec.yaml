@@ -1,0 +1,47 @@
+name: ecnu_eams_client
+description: ECNU选课系统客户端
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # UI
+  cupertino_icons: ^1.0.6
+  material_design_icons_flutter: ^7.0.7296
+  
+  # 状态管理
+  provider: ^6.1.1
+  
+  # HTTP请求
+  http: ^1.1.0
+  dio: ^5.4.0
+  
+  # 本地存储
+  shared_preferences: ^2.2.2
+  
+  # WebView (mobile platforms)
+  webview_flutter: ^4.4.2
+  webview_flutter_web: ^0.2.2+4
+  
+  # JSON序列化
+  json_annotation: ^4.8.1
+  
+  # 工具
+  intl: ^0.18.1
+  url_launcher: ^6.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  json_serializable: ^6.7.1
+  build_runner: ^2.4.7
+
+flutter:
+  uses-material-design: true
+
