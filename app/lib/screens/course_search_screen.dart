@@ -497,53 +497,40 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final result = await showDialog<String>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('选择操作'),
-                        content: const Text('您想要将此课程添加到哪个列表？'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, 'rob'),
-                            child: const Text('抢课列表'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, 'monitor'),
-                            child: const Text('监控列表'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('取消'),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (result == 'rob') {
-                      widget.courseProvider.addRobTarget(widget.course);
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('已添加到抢课列表')),
-                        );
-                      }
-                    } else if (result == 'monitor') {
-                      widget.courseProvider.addMonitorTarget(widget.course);
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('已添加到监控列表')),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.add_circle),
-                  label: const Text('添加到列表'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        widget.courseProvider.addMonitorTarget(widget.course);
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已添加到监控列表')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.visibility),
+                      label: const Text('添加到监控'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        widget.courseProvider.addRobTarget(widget.course);
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已添加到抢课列表')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.flash_on),
+                      label: const Text('添加到抢课'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
