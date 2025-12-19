@@ -45,17 +45,17 @@ func (c *Client) GetQueryCondition(turnID int) (*QueryCondition, error) {
 func (c *Client) QueryLessons(studentID, turnID int, req *LessonQueryRequest) (*LessonQueryResponse, error) {
 	if req == nil {
 		req = &LessonQueryRequest{
-			TurnID:    turnID,
-			StudentID: studentID,
-			PageNo:    1,
-			PageSize:  20,
-			CanSelect: true,
+			TurnID:        turnID,
+			StudentID:     studentID,
+			PageNo:        1,
+			PageSize:      20,
+			CanSelect:     true,
 			CanSelectText: "可选",
-			SortField: "lesson",
-			SortType:  "ASC",
+			SortField:     "lesson",
+			SortType:      "ASC",
 		}
 	}
-	
+
 	var result LessonQueryResponse
 	endpoint := fmt.Sprintf("/student/course-select/query-lesson/%d/%d", studentID, turnID)
 	err := c.Post(endpoint, req, &result)
@@ -98,28 +98,28 @@ func (c *Client) GetCountInfoBatch(lessonIDs []int) (map[string]string, error) {
 }
 
 // AddCoursePredicate 发起选课验证请求
-func (c *Client) AddCoursePredicate(req *AddDropRequest) (string, error) {
+func (c *Client) AddCoursePredicate(req *AddPredicate) (string, error) {
 	var result string
 	err := c.Post("/student/course-select/add-predicate", req, &result)
 	return result, err
 }
 
 // AddCourseRequest 发起选课请求
-func (c *Client) AddCourseRequest(req *AddDropRequest) (string, error) {
+func (c *Client) AddCourseRequest(req *AddRequest) (string, error) {
 	var result string
 	err := c.Post("/student/course-select/add-request", req, &result)
 	return result, err
 }
 
 // DropCoursePredicate 发起退课验证请求
-func (c *Client) DropCoursePredicate(req *AddDropRequest) (string, error) {
+func (c *Client) DropCoursePredicate(req *DropPredicate) (string, error) {
 	var result string
 	err := c.Post("/student/course-select/drop-predicate", req, &result)
 	return result, err
 }
 
 // DropCourseRequest 发起退课请求
-func (c *Client) DropCourseRequest(req *AddDropRequest) (string, error) {
+func (c *Client) DropCourseRequest(req *DropRequest) (string, error) {
 	var result string
 	err := c.Post("/student/course-select/drop-request", req, &result)
 	return result, err
@@ -143,8 +143,8 @@ func (c *Client) GetAddDropResponse(studentID int, requestID string) (*AddDropRe
 
 // AddCourse 选课（包含验证和提交）
 func (c *Client) AddCourse(studentID, turnID, lessonID int, virtualCost int) error {
-	req := &AddDropRequest{
-		StudentAssoc:        studentID,
+	reqp := &AddPredicate{
+		StudentAssoc:          studentID,
 		CourseSelectTurnAssoc: turnID,
 		RequestMiddleDtos: []RequestMiddleDto{
 			{
@@ -156,7 +156,7 @@ func (c *Client) AddCourse(studentID, turnID, lessonID int, virtualCost int) err
 	}
 
 	// 先验证
-	requestID, err := c.AddCoursePredicate(req)
+	requestID, err := c.AddCoursePredicate(reqp)
 	if err != nil {
 		return fmt.Errorf("验证失败: %w", err)
 	}
@@ -175,8 +175,20 @@ func (c *Client) AddCourse(studentID, turnID, lessonID int, virtualCost int) err
 		return fmt.Errorf("验证失败: %s", msg)
 	}
 
+	reqr := &AddRequest{
+		StudentAssoc:          studentID,
+		CourseSelectTurnAssoc: turnID,
+		RequestMiddleDtos: []RequestMiddleDto{
+			{
+				LessonAssoc: lessonID,
+				VirtualCost: virtualCost,
+			},
+		},
+		CoursePackAssoc: nil,
+	}
+
 	// 提交选课请求
-	requestID, err = c.AddCourseRequest(req)
+	requestID, err = c.AddCourseRequest(reqr)
 	if err != nil {
 		return fmt.Errorf("提交选课请求失败: %w", err)
 	}
@@ -200,20 +212,14 @@ func (c *Client) AddCourse(studentID, turnID, lessonID int, virtualCost int) err
 
 // DropCourse 退课（包含验证和提交）
 func (c *Client) DropCourse(studentID, turnID, lessonID int) error {
-	req := &AddDropRequest{
-		StudentAssoc:        studentID,
+	reqp := &DropPredicate{
+		StudentAssoc:          studentID,
 		CourseSelectTurnAssoc: turnID,
-		RequestMiddleDtos: []RequestMiddleDto{
-			{
-				LessonAssoc: lessonID,
-				VirtualCost: 0,
-			},
-		},
-		CoursePackAssoc: nil,
+		LessonAssocSet:        []int{lessonID},
 	}
 
 	// 先验证
-	requestID, err := c.DropCoursePredicate(req)
+	requestID, err := c.DropCoursePredicate(reqp)
 	if err != nil {
 		return fmt.Errorf("验证失败: %w", err)
 	}
@@ -232,8 +238,15 @@ func (c *Client) DropCourse(studentID, turnID, lessonID int) error {
 		return fmt.Errorf("验证失败: %s", msg)
 	}
 
+	reqr := &DropRequest{
+		StudentAssoc:          studentID,
+		CourseSelectTurnAssoc: turnID,
+		LessonAssocs:          []int{lessonID},
+		CoursePackAssoc:       nil,
+	}
+
 	// 提交退课请求
-	requestID, err = c.DropCourseRequest(req)
+	requestID, err = c.DropCourseRequest(reqr)
 	if err != nil {
 		return fmt.Errorf("提交退课请求失败: %w", err)
 	}
@@ -254,4 +267,3 @@ func (c *Client) DropCourse(studentID, turnID, lessonID int) error {
 
 	return nil
 }
-

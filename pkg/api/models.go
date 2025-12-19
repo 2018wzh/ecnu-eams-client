@@ -30,36 +30,36 @@ type TimeRange struct {
 
 // TurnMode 选课模式
 type TurnMode struct {
-	EnablePreSelect      bool `json:"enablePreSelect"`
-	EnableDelayRelease   bool `json:"enableDelayRelease"`
-	EnableVirtualWallet  bool `json:"enableVirtualWallet"`
-	ShowCount            bool `json:"showCount"`
-	EnableStudentPreset  bool `json:"enableStudentPreset"`
+	EnablePreSelect     bool `json:"enablePreSelect"`
+	EnableDelayRelease  bool `json:"enableDelayRelease"`
+	EnableVirtualWallet bool `json:"enableVirtualWallet"`
+	ShowCount           bool `json:"showCount"`
+	EnableStudentPreset bool `json:"enableStudentPreset"`
 }
 
 // Lesson 课程
 type Lesson struct {
-	ID                    int                `json:"id"`
-	NameZh                string             `json:"nameZh"`
-	NameEn                *string            `json:"nameEn"`
-	Code                  string             `json:"code"`
-	Teachers              []Teacher          `json:"teachers"`
-	Course                Course             `json:"course"`
-	CourseType            CourseType         `json:"courseType"`
-	ExamMode              ExamMode           `json:"examMode"`
-	CourseProperty        CourseProperty     `json:"courseProperty"`
-	Campus                Campus             `json:"campus"`
-	LimitCount            int                `json:"limitCount"`
-	AcrossMajorLimitCount int                `json:"acrossMajorLimitCount"`
-	AcrossMajorEnable     bool               `json:"acrossMajorEnable"`
-	DateTimePlace         DateTimePlace      `json:"dateTimePlace"`
-	ScheduleGroups        []ScheduleGroup    `json:"scheduleGroups"`
-	VirtualCost           *int               `json:"virtualCost"`
-	Retake                bool               `json:"retake"`
-	Setup                 bool               `json:"setup"`
-	Pinned                bool               `json:"pinned"`
-	NeedAttend            bool               `json:"needAttend"`
-	AcrossMajor           bool               `json:"acrossMajor"`
+	ID                    int             `json:"id"`
+	NameZh                string          `json:"nameZh"`
+	NameEn                *string         `json:"nameEn"`
+	Code                  string          `json:"code"`
+	Teachers              []Teacher       `json:"teachers"`
+	Course                Course          `json:"course"`
+	CourseType            CourseType      `json:"courseType"`
+	ExamMode              ExamMode        `json:"examMode"`
+	CourseProperty        CourseProperty  `json:"courseProperty"`
+	Campus                Campus          `json:"campus"`
+	LimitCount            int             `json:"limitCount"`
+	AcrossMajorLimitCount int             `json:"acrossMajorLimitCount"`
+	AcrossMajorEnable     bool            `json:"acrossMajorEnable"`
+	DateTimePlace         DateTimePlace   `json:"dateTimePlace"`
+	ScheduleGroups        []ScheduleGroup `json:"scheduleGroups"`
+	VirtualCost           *int            `json:"virtualCost"`
+	Retake                bool            `json:"retake"`
+	Setup                 bool            `json:"setup"`
+	Pinned                bool            `json:"pinned"`
+	NeedAttend            bool            `json:"needAttend"`
+	AcrossMajor           bool            `json:"acrossMajor"`
 }
 
 // Teacher 教师
@@ -71,12 +71,12 @@ type Teacher struct {
 
 // Course 课程信息
 type Course struct {
-	ID        int      `json:"id"`
-	NameZh    string   `json:"nameZh"`
-	NameEn    *string  `json:"nameEn"`
-	Code      string   `json:"code"`
-	Credits   float64  `json:"credits"`
-	Flags     []string `json:"flags"`
+	ID         int        `json:"id"`
+	NameZh     string     `json:"nameZh"`
+	NameEn     *string    `json:"nameEn"`
+	Code       string     `json:"code"`
+	Credits    float64    `json:"credits"`
+	Flags      []string   `json:"flags"`
 	Department Department `json:"department"`
 }
 
@@ -122,19 +122,19 @@ type Campus struct {
 
 // DateTimePlace 时间地点
 type DateTimePlace struct {
-	TextZh string  `json:"textZh"`
-	TextEn string  `json:"textEn"`
-	Text   string  `json:"text"`
+	TextZh string `json:"textZh"`
+	TextEn string `json:"textEn"`
+	Text   string `json:"text"`
 }
 
 // ScheduleGroup 课程时间组
 type ScheduleGroup struct {
-	ID            int          `json:"id"`
-	No            int          `json:"no"`
-	Default       bool         `json:"default"`
-	LimitCount    int          `json:"limitCount"`
+	ID            int           `json:"id"`
+	No            int           `json:"no"`
+	Default       bool          `json:"default"`
+	LimitCount    int           `json:"limitCount"`
 	DateTimePlace DateTimePlace `json:"dateTimePlace"`
-	Schedules     []Schedule   `json:"schedules"`
+	Schedules     []Schedule    `json:"schedules"`
 }
 
 // Schedule 课程时间
@@ -150,106 +150,106 @@ type Schedule struct {
 
 // SelectDetail 选课详情
 type SelectDetail struct {
-	PackCourseSelect      bool      `json:"packCourseSelect"`
-	RetakeDisallow        bool      `json:"retakeDisallow"`
-	RetakeExclusiveAllow  bool      `json:"retakeExclusiveAllow"`
-	SubstituteCourseRetake bool     `json:"substituteCourseRetake"`
-	RetakePassedDisallow  bool      `json:"retakePassedDisallow"`
-	ConflictAgreeNotAttend bool    `json:"conflictAgreeNotAttend"`
-	Turn                  TurnDetail `json:"turn"`
-	BizTypeID             int        `json:"bizTypeId"`
-	Semester              Semester   `json:"semester"`
-	CampusID              int        `json:"campusId"`
-	ProgramID             int        `json:"programId"`
+	PackCourseSelect       bool       `json:"packCourseSelect"`
+	RetakeDisallow         bool       `json:"retakeDisallow"`
+	RetakeExclusiveAllow   bool       `json:"retakeExclusiveAllow"`
+	SubstituteCourseRetake bool       `json:"substituteCourseRetake"`
+	RetakePassedDisallow   bool       `json:"retakePassedDisallow"`
+	ConflictAgreeNotAttend bool       `json:"conflictAgreeNotAttend"`
+	Turn                   TurnDetail `json:"turn"`
+	BizTypeID              int        `json:"bizTypeId"`
+	Semester               Semester   `json:"semester"`
+	CampusID               int        `json:"campusId"`
+	ProgramID              int        `json:"programId"`
 	Program                Program    `json:"program"`
 }
 
 // TurnDetail 轮次详情
 type TurnDetail struct {
-	ID          int      `json:"id"`
-	SemesterAssoc int    `json:"semesterAssoc"`
-	TurnMode    TurnMode `json:"turnMode"`
-	TurnTab     TurnTab  `json:"turnTab"`
-	Name        string   `json:"name"`
-	Bulletin    string   `json:"bulletin"`
+	ID            int      `json:"id"`
+	SemesterAssoc int      `json:"semesterAssoc"`
+	TurnMode      TurnMode `json:"turnMode"`
+	TurnTab       TurnTab  `json:"turnTab"`
+	Name          string   `json:"name"`
+	Bulletin      string   `json:"bulletin"`
 }
 
 // TurnTab 选课标签
 type TurnTab struct {
-	ShowPlanTab           bool    `json:"showPlanTab"`
-	PlanTabName           string  `json:"planTabName"`
-	ShowPublicCourseTab   bool    `json:"showPublicCourseTab"`
-	PublicCourseTabName   string  `json:"publicCourseTabName"`
-	ShowAcrossMajorTab    bool    `json:"showAcrossMajorTab"`
-	AcrossMajorTabName    string  `json:"acrossMajorTabName"`
-	ShowRetakeTab         bool    `json:"showRetakeTab"`
-	RetakeTabName         string  `json:"retakeTabName"`
-	ShowAllCourseTab      bool    `json:"showAllCourseTab"`
-	AllCourseTabName      string  `json:"allCourseTabName"`
-	ShowSelectedTab       bool    `json:"showSelectedTab"`
-	SelectedTabName       string  `json:"selectedTabName"`
-	ShowCourseTableTab    bool    `json:"showCourseTableTab"`
-	CourseTableTabName    string  `json:"courseTableTabName"`
+	ShowPlanTab         bool   `json:"showPlanTab"`
+	PlanTabName         string `json:"planTabName"`
+	ShowPublicCourseTab bool   `json:"showPublicCourseTab"`
+	PublicCourseTabName string `json:"publicCourseTabName"`
+	ShowAcrossMajorTab  bool   `json:"showAcrossMajorTab"`
+	AcrossMajorTabName  string `json:"acrossMajorTabName"`
+	ShowRetakeTab       bool   `json:"showRetakeTab"`
+	RetakeTabName       string `json:"retakeTabName"`
+	ShowAllCourseTab    bool   `json:"showAllCourseTab"`
+	AllCourseTabName    string `json:"allCourseTabName"`
+	ShowSelectedTab     bool   `json:"showSelectedTab"`
+	SelectedTabName     string `json:"selectedTabName"`
+	ShowCourseTableTab  bool   `json:"showCourseTableTab"`
+	CourseTableTabName  string `json:"courseTableTabName"`
 }
 
 // Semester 学期
 type Semester struct {
-	ID        int     `json:"id"`
-	NameZh    string  `json:"nameZh"`
-	NameEn    string  `json:"nameEn"`
-	Season    string  `json:"season"`
+	ID         int    `json:"id"`
+	NameZh     string `json:"nameZh"`
+	NameEn     string `json:"nameEn"`
+	Season     string `json:"season"`
 	CalendarID int    `json:"calendarId"`
 }
 
 // Program 培养方案
 type Program struct {
-	ID            int     `json:"id"`
-	NameZh        string  `json:"nameZh"`
-	NameEn        *string `json:"nameEn"`
-	ProgramType   string  `json:"programType"`
-	Season        string  `json:"season"`
-	BizTypeID     int     `json:"bizTypeId"`
-	RequireCredits int    `json:"requireCredits"`
+	ID             int     `json:"id"`
+	NameZh         string  `json:"nameZh"`
+	NameEn         *string `json:"nameEn"`
+	ProgramType    string  `json:"programType"`
+	Season         string  `json:"season"`
+	BizTypeID      int     `json:"bizTypeId"`
+	RequireCredits int     `json:"requireCredits"`
 }
 
 // QueryCondition 查询条件
 type QueryCondition struct {
-	Grades          []string     `json:"grades"`
-	Departments     []Department `json:"departments"`
-	Campuses        []Campus     `json:"campuses"`
-	CourseTypes     []CourseType `json:"courseTypes"`
+	Grades           []string         `json:"grades"`
+	Departments      []Department     `json:"departments"`
+	Campuses         []Campus         `json:"campuses"`
+	CourseTypes      []CourseType     `json:"courseTypes"`
 	CourseProperties []CourseProperty `json:"courseProperties"`
 }
 
 // LessonQueryRequest 课程查询请求
 type LessonQueryRequest struct {
-	TurnID              int     `json:"turnId"`
-	StudentID           int     `json:"studentId"`
-	SemesterID          int     `json:"semesterId"`
-	PageNo              int     `json:"pageNo"`
-	PageSize            int     `json:"pageSize"`
-	CourseNameOrCode    string  `json:"courseNameOrCode"`
-	LessonNameOrCode    string  `json:"lessonNameOrCode"`
-	TeacherNameOrCode   string  `json:"teacherNameOrCode"`
-	Week                string  `json:"week"`
-	Grade               string  `json:"grade"`
-	DepartmentID        string  `json:"departmentId"`
-	MajorID             string  `json:"majorId"`
-	AdminclassID        string  `json:"adminclassId"`
-	CampusID            string  `json:"campusId"`
-	OpenDepartmentID    string  `json:"openDepartmentId"`
-	CourseTypeID        string  `json:"courseTypeId"`
-	CoursePropertyID    string  `json:"coursePropertyId"`
-	CanSelect           bool    `json:"canSelect"`
-	CanSelectText       string  `json:"_canSelect"`
-	CreditGte           *float64 `json:"creditGte"`
-	CreditLte           *float64 `json:"creditLte"`
-	HasCount            *bool    `json:"hasCount"`
-	IDs                 []int    `json:"ids"`
-	SubstitutedCourseID *int     `json:"substitutedCourseId"`
-	CourseSubstitutePoolID *int  `json:"courseSubstitutePoolId"`
-	SortField           string   `json:"sortField"`
-	SortType            string   `json:"sortType"`
+	TurnID                 int      `json:"turnId"`
+	StudentID              int      `json:"studentId"`
+	SemesterID             int      `json:"semesterId"`
+	PageNo                 int      `json:"pageNo"`
+	PageSize               int      `json:"pageSize"`
+	CourseNameOrCode       string   `json:"courseNameOrCode"`
+	LessonNameOrCode       string   `json:"lessonNameOrCode"`
+	TeacherNameOrCode      string   `json:"teacherNameOrCode"`
+	Week                   string   `json:"week"`
+	Grade                  string   `json:"grade"`
+	DepartmentID           string   `json:"departmentId"`
+	MajorID                string   `json:"majorId"`
+	AdminclassID           string   `json:"adminclassId"`
+	CampusID               string   `json:"campusId"`
+	OpenDepartmentID       string   `json:"openDepartmentId"`
+	CourseTypeID           string   `json:"courseTypeId"`
+	CoursePropertyID       string   `json:"coursePropertyId"`
+	CanSelect              bool     `json:"canSelect"`
+	CanSelectText          string   `json:"_canSelect"`
+	CreditGte              *float64 `json:"creditGte"`
+	CreditLte              *float64 `json:"creditLte"`
+	HasCount               *bool    `json:"hasCount"`
+	IDs                    []int    `json:"ids"`
+	SubstitutedCourseID    *int     `json:"substitutedCourseId"`
+	CourseSubstitutePoolID *int     `json:"courseSubstitutePoolId"`
+	SortField              string   `json:"sortField"`
+	SortType               string   `json:"sortType"`
 }
 
 // LessonQueryResponse 课程查询响应
@@ -269,35 +269,58 @@ type PageInfo struct {
 
 // RepairedCourse 重修课程
 type RepairedCourse struct {
-	ID                    int         `json:"id"`
-	NameZh                string      `json:"nameZh"`
-	NameEn                string      `json:"nameEn"`
-	Code                  string      `json:"code"`
-	Credits               float64     `json:"credits"`
-	Flags                 interface{} `json:"flags"`
-	Department            Department  `json:"department"`
-	Score                 int         `json:"score"`
-	CourseSelectPassStatus string     `json:"courseSelectPassStatus"`
-	CourseType            CourseType  `json:"courseType"`
-	Passed                bool        `json:"passed"`
+	ID                     int         `json:"id"`
+	NameZh                 string      `json:"nameZh"`
+	NameEn                 string      `json:"nameEn"`
+	Code                   string      `json:"code"`
+	Credits                float64     `json:"credits"`
+	Flags                  interface{} `json:"flags"`
+	Department             Department  `json:"department"`
+	Score                  int         `json:"score"`
+	CourseSelectPassStatus string      `json:"courseSelectPassStatus"`
+	CourseType             CourseType  `json:"courseType"`
+	Passed                 bool        `json:"passed"`
 }
 
 // CountInfo 课程名额信息
 type CountInfo struct {
-	LimitCount     int `json:"limitCount"`
-	AmLimitCount   int `json:"amLimitCount"`
-	StdCount       int `json:"stdCount"`
-	AmStdCount     int `json:"amStdCount"`
-	PreStdCount    int `json:"preStdCount"`
-	PreAmStdCount  int `json:"preAmStdCount"`
+	LimitCount    int `json:"limitCount"`
+	AmLimitCount  int `json:"amLimitCount"`
+	StdCount      int `json:"stdCount"`
+	AmStdCount    int `json:"amStdCount"`
+	PreStdCount   int `json:"preStdCount"`
+	PreAmStdCount int `json:"preAmStdCount"`
 }
 
-// AddDropRequest 选退课请求
-type AddDropRequest struct {
-	StudentAssoc        int                `json:"studentAssoc"`
-	CourseSelectTurnAssoc int              `json:"courseSelectTurnAssoc"`
-	RequestMiddleDtos   []RequestMiddleDto `json:"requestMiddleDtos"`
-	CoursePackAssoc     *int               `json:"coursePackAssoc"`
+// AddPredicate 选课验证请求
+type AddPredicate struct {
+	StudentAssoc          int                `json:"studentAssoc"`
+	CourseSelectTurnAssoc int                `json:"courseSelectTurnAssoc"`
+	RequestMiddleDtos     []RequestMiddleDto `json:"requestMiddleDtos"`
+	CoursePackAssoc       *int               `json:"coursePackAssoc"`
+}
+
+// AddRequest 选课请求
+type AddRequest struct {
+	StudentAssoc          int                `json:"studentAssoc"`
+	CourseSelectTurnAssoc int                `json:"courseSelectTurnAssoc"`
+	RequestMiddleDtos     []RequestMiddleDto `json:"requestMiddleDtos"`
+	CoursePackAssoc       *int               `json:"coursePackAssoc"`
+}
+
+// DropPredicate 退课验证请求
+type DropPredicate struct {
+	StudentAssoc          int   `json:"studentAssoc"`
+	CourseSelectTurnAssoc int   `json:"courseSelectTurnAssoc"`
+	LessonAssocSet        []int `json:"lessonAssocSet"`
+}
+
+// DropRequest 退课请求
+type DropRequest struct {
+	StudentAssoc          int   `json:"studentAssoc"`
+	CourseSelectTurnAssoc int   `json:"courseSelectTurnAssoc"`
+	LessonAssocs          []int `json:"lessonAssocs"`
+	CoursePackAssoc       *int  `json:"coursePackAssoc"`
 }
 
 // RequestMiddleDto 请求中间DTO
@@ -308,11 +331,10 @@ type RequestMiddleDto struct {
 
 // AddDropResponse 选退课响应
 type AddDropResponse struct {
-	ID          string                 `json:"id"`
-	RequestID   string                 `json:"requestId"`
-	Exception   interface{}            `json:"exception"`
-	ErrorMessage *string               `json:"errorMessage"`
-	Success     bool                   `json:"success"`
-	Result      map[string]interface{} `json:"result"`
+	ID           string                 `json:"id"`
+	RequestID    string                 `json:"requestId"`
+	Exception    interface{}            `json:"exception"`
+	ErrorMessage *string                `json:"errorMessage"`
+	Success      bool                   `json:"success"`
+	Result       map[string]interface{} `json:"result"`
 }
-

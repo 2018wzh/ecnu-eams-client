@@ -1,4 +1,4 @@
-package main
+package examples
 
 import (
 	"fmt"
@@ -13,7 +13,8 @@ import (
 	"github.com/ecnu-eams-client/course-selection/pkg/robber"
 )
 
-func main() {
+// RobExample 抢课示例
+func RobExample() {
 	// 1. 浏览器登录
 	fmt.Println("正在启动浏览器登录...")
 	browserAuth, err := auth.NewBrowserAuth(false)
@@ -79,5 +80,3 @@ func main() {
 	robber.Stop()
 	fmt.Println("抢课已停止")
 }
-
-

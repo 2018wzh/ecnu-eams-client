@@ -1,4 +1,4 @@
-package main
+package examples
 
 import (
 	"fmt"
@@ -9,7 +9,8 @@ import (
 	"github.com/ecnu-eams-client/course-selection/pkg/auth"
 )
 
-func main() {
+// BasicUsageExample 基础使用示例
+func BasicUsageExample() {
 	// 1. 浏览器登录获取Cookies
 	fmt.Println("正在启动浏览器登录...")
 	browserAuth, err := auth.NewBrowserAuth(false) // false表示显示浏览器窗口
@@ -116,5 +117,3 @@ func main() {
 
 	fmt.Println("\n示例完成！")
 }
-
-
