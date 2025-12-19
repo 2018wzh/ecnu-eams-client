@@ -8,7 +8,7 @@ import '../providers/auth_provider.dart';
 import '../utils/error_dialog.dart';
 
 // Conditional imports for webview
-import 'package:webview_flutter/webview_flutter.dart' 
+import 'package:webview_flutter/webview_flutter.dart'
     if (dart.library.html) 'package:webview_flutter_web/webview_flutter_web.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -55,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
               setState(() {
                 _isLoading = false;
               });
-              
+
               // 检查是否登录成功（URL变化或特定元素出现）
               if (url.contains('byyt.ecnu.edu.cn') && !url.contains('login')) {
                 _extractAuthorization();
@@ -77,10 +77,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _extractAuthorization() async {
     try {
       if (_controller == null) return;
-      
+
       // 尝试从localStorage获取Authorization token
       String? authorization;
-      
+
       try {
         final token = await _controller!.runJavaScriptReturningResult(
           "localStorage.getItem('authorization') || localStorage.getItem('token') || sessionStorage.getItem('authorization') || sessionStorage.getItem('token')",
@@ -91,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (e) {
         debugPrint('从localStorage获取token失败: $e');
       }
-      
+
       // 如果localStorage中没有，尝试从请求头中获取
       if (authorization == null || authorization.isEmpty) {
         try {
@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
           debugPrint('从请求头获取token失败: $e');
         }
       }
-      
+
       // 如果仍然没有找到，显示输入对话框
       if (authorization == null || authorization.isEmpty) {
         if (mounted) {
@@ -127,16 +127,16 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         return;
       }
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('authorization', authorization);
-      
+
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await authProvider.setAuthorization(authorization);
-      
+
       try {
         await authProvider.loadStudentInfo();
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -171,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final url = Uri.parse('https://byyt.ecnu.edu.cn/');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
-      
+
       // 显示提示，让用户手动输入Authorization token
       if (mounted) {
         _showAuthorizationInputDialog();
@@ -189,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showAuthorizationInputDialog() {
     final authController = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -212,6 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   helperText: '例如: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
                 ),
                 maxLines: 3,
+                enableInteractiveSelection: true,
               ),
               const SizedBox(height: 8),
               const Text(
@@ -234,15 +235,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
                 return;
               }
-              
+
               String authorization = authController.text.trim();
-              
-              final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+              final authProvider =
+                  Provider.of<AuthProvider>(context, listen: false);
               await authProvider.setAuthorization(authorization);
-              
+
               try {
                 await authProvider.loadStudentInfo();
-                
+
                 if (mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -283,7 +285,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.open_in_browser, size: 64, color: Colors.blue),
+                    const Icon(Icons.open_in_browser,
+                        size: 64, color: Colors.blue),
                     const SizedBox(height: 24),
                     const Text(
                       '将在外部浏览器中打开登录页面',
@@ -296,7 +299,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       icon: const Icon(Icons.launch),
                       label: const Text('打开浏览器登录'),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -324,4 +328,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

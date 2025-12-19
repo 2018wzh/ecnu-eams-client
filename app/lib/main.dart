@@ -13,17 +13,36 @@ void main() async {
   // 初始化通知服务
   await NotificationService.initialize();
 
-  runApp(const MyApp());
+  // 初始化认证状态
+  final authProvider = AuthProvider();
+  await _initializeAuth(authProvider);
+
+  runApp(MyApp(authProvider: authProvider));
+}
+
+Future<void> _initializeAuth(AuthProvider authProvider) async {
+  final prefs = await SharedPreferences.getInstance();
+  final authorization = prefs.getString('authorization');
+  if (authorization != null && authorization.isNotEmpty) {
+    await authProvider.setAuthorization(authorization);
+    final isValid = await authProvider.checkTokenValidity();
+    if (!isValid) {
+      await prefs.remove('authorization');
+      authProvider.logout();
+    }
+  }
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final AuthProvider authProvider;
+
+  const MyApp({super.key, required this.authProvider});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider.value(value: authProvider),
         ChangeNotifierProvider(create: (_) => CourseProvider()),
       ],
       child: MaterialApp(
@@ -44,10 +63,7 @@ class MyApp extends StatelessWidget {
             'Source Han Sans SC', // 通用备选
             'sans-serif', // 最终回退
           ],
-          appBarTheme: const AppBarTheme(
-            centerTitle: true,
-            elevation: 0,
-          ),
+          appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
         ),
         home: const AuthWrapper(),
         debugShowCheckedModeBanner: false,
@@ -56,42 +72,19 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatefulWidget {
+class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
-}
-
-class _AuthWrapperState extends State<AuthWrapper> {
-  bool _isLoading = true;
-  bool _isLoggedIn = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkAuthStatus();
-  }
-
-  Future<void> _checkAuthStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final authorization = prefs.getString('authorization');
-    setState(() {
-      _isLoggedIn = authorization != null && authorization.isNotEmpty;
-      _isLoading = false;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    return _isLoggedIn ? const HomeScreen() : const LoginScreen();
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, child) {
+        if (authProvider.isAuthenticated) {
+          return const HomeScreen();
+        } else {
+          return const LoginScreen();
+        }
+      },
+    );
   }
 }

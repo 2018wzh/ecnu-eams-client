@@ -46,7 +46,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> loadTurns() async {
     if (_studentID == null) return;
-    
+
     try {
       _errorMessage = null;
       _turns = await _apiService.getOpenTurns(int.parse(_studentID!));
@@ -73,5 +73,14 @@ class AuthProvider with ChangeNotifier {
     _currentTurn = null;
     notifyListeners();
   }
-}
 
+  Future<bool> checkTokenValidity() async {
+    try {
+      await _apiService.getCurrentDateTime();
+      return true;
+    } catch (e) {
+      // 如果是401或其他错误，认为token无效
+      return false;
+    }
+  }
+}

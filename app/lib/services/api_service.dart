@@ -79,23 +79,32 @@ class ApiService {
     return result as List<dynamic>;
   }
 
-  Future<List<int>> getStudentID() async {
-    final data = await _requestList('GET', '/student/course-select/students');
-    return List<int>.from(data);
+  Future<String> getCurrentDateTime() async {
+    final data = await _request(
+      'GET',
+      '/student/course-select/getCurrentDateTime',
+    );
+    return data as String;
   }
 
   Future<List<Map<String, dynamic>>> getOpenTurns(int studentID) async {
     final data = await _requestList(
-        'GET', '/student/course-select/open-turns/$studentID');
+      'GET',
+      '/student/course-select/open-turns/$studentID',
+    );
     return List<Map<String, dynamic>>.from(
       data.map((item) => item as Map<String, dynamic>),
     );
   }
 
   Future<Map<String, dynamic>> getSelectDetail(
-      int studentID, int turnID) async {
+    int studentID,
+    int turnID,
+  ) async {
     return await _requestMap(
-        'GET', '/student/course-select/$studentID/turn/$turnID/select');
+      'GET',
+      '/student/course-select/$studentID/turn/$turnID/select',
+    );
   }
 
   Future<int> getSemesterID(int studentID, int turnID) async {
@@ -104,9 +113,13 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getSelectedLessons(
-      int turnID, int studentID) async {
+    int turnID,
+    int studentID,
+  ) async {
     final data = await _requestList(
-        'GET', '/student/course-select/selected-lessons/$turnID/$studentID');
+      'GET',
+      '/student/course-select/selected-lessons/$turnID/$studentID',
+    );
     return List<Map<String, dynamic>>.from(
       data.map((item) => item as Map<String, dynamic>),
     );
@@ -114,7 +127,9 @@ class ApiService {
 
   Future<Map<String, dynamic>> getQueryCondition(int turnID) async {
     return await _requestMap(
-        'GET', '/student/course-select/query-condition/$turnID');
+      'GET',
+      '/student/course-select/query-condition/$turnID',
+    );
   }
 
   Future<Map<String, dynamic>> queryLessons({
@@ -176,14 +191,20 @@ class ApiService {
     };
 
     return await _requestMap(
-        'POST', '/student/course-select/query-lesson/$studentID/$turnID',
-        body: body);
+      'POST',
+      '/student/course-select/query-lesson/$studentID/$turnID',
+      body: body,
+    );
   }
 
   Future<List<Map<String, dynamic>>> getRepairedCourses(
-      int turnID, int studentID) async {
+    int turnID,
+    int studentID,
+  ) async {
     final data = await _requestList(
-        'GET', '/student/course-select/repaired-courses/$turnID/$studentID');
+      'GET',
+      '/student/course-select/repaired-courses/$turnID/$studentID',
+    );
     return List<Map<String, dynamic>>.from(
       data.map((item) => item as Map<String, dynamic>),
     );
@@ -191,7 +212,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> getCountInfo(int lessonID) async {
     final url = Uri.parse(
-        '$baseURL/student/course-select/count-info?lessonId=$lessonID');
+      '$baseURL/student/course-select/count-info?lessonId=$lessonID',
+    );
     final headers = await _getHeaders();
     final response = await http.get(url, headers: headers);
 
@@ -207,6 +229,15 @@ class ApiService {
     return data['data'] as Map<String, dynamic>;
   }
 
+  Future<Map<String, String>> getBatchCountInfo(List<int> lessonIDs) async {
+    final data = await _requestMap(
+      'POST',
+      '/student/course-select/std-count',
+      body: {'lessonIds': lessonIDs},
+    );
+    return Map<String, String>.from(data);
+  }
+
   Future<String> _addPredicate({
     required int studentID,
     required int turnID,
@@ -218,16 +249,16 @@ class ApiService {
       'studentAssoc': studentID,
       'courseSelectTurnAssoc': turnID,
       'requestMiddleDtos': [
-        {
-          'lessonAssoc': lessonID,
-          'virtualCost': virtualCost,
-        }
+        {'lessonAssoc': lessonID, 'virtualCost': virtualCost},
       ],
       'coursePackAssoc': null,
     };
 
-    final data = await _request('POST', '/student/course-select/add-predicate',
-        body: body);
+    final data = await _request(
+      'POST',
+      '/student/course-select/add-predicate',
+      body: body,
+    );
     return data.toString();
   }
 
@@ -242,16 +273,16 @@ class ApiService {
       'studentAssoc': studentID,
       'courseSelectTurnAssoc': turnID,
       'requestMiddleDtos': [
-        {
-          'lessonAssoc': lessonID,
-          'virtualCost': virtualCost,
-        }
+        {'lessonAssoc': lessonID, 'virtualCost': virtualCost},
       ],
       'coursePackAssoc': null,
     };
 
-    final data = await _request('POST', '/student/course-select/add-request',
-        body: body);
+    final data = await _request(
+      'POST',
+      '/student/course-select/add-request',
+      body: body,
+    );
     return data.toString();
   }
 
@@ -264,11 +295,14 @@ class ApiService {
     body = {
       'studentAssoc': studentID,
       'courseSelectTurnAssoc': turnID,
-      'lessonAssocSet': [lessonID]
+      'lessonAssocSet': [lessonID],
     };
 
-    final data = await _request('POST', '/student/course-select/drop-predicate',
-        body: body);
+    final data = await _request(
+      'POST',
+      '/student/course-select/drop-predicate',
+      body: body,
+    );
     return data.toString();
   }
 
@@ -285,19 +319,31 @@ class ApiService {
       'coursePackAssoc': null,
     };
 
-    final data = await _request('POST', '/student/course-select/drop-request',
-        body: body);
+    final data = await _request(
+      'POST',
+      '/student/course-select/drop-request',
+      body: body,
+    );
     return data.toString();
   }
 
   Future<Map<String, dynamic>> _getResponse(
-      String type, int studentID, String requestID) async {
+    String type,
+    int studentID,
+    String requestID,
+  ) async {
     return await _requestMap(
-        'GET', '/student/course-select/$type-response/$studentID/$requestID');
+      'GET',
+      '/student/course-select/$type-response/$studentID/$requestID',
+    );
   }
 
   Future<void> addCourse(
-      int studentID, int turnID, int lessonID, int virtualCost) async {
+    int studentID,
+    int turnID,
+    int lessonID,
+    int virtualCost,
+  ) async {
     // 先验证
     final predicateID = await _addPredicate(
       studentID: studentID,
@@ -307,8 +353,11 @@ class ApiService {
     );
 
     // 查询验证结果
-    final predicateResult =
-        await _getResponse('predicate', studentID, predicateID);
+    final predicateResult = await _getResponse(
+      'predicate',
+      studentID,
+      predicateID,
+    );
     if (!(predicateResult['success'] as bool)) {
       throw Exception(predicateResult['errorMessage'] ?? '验证失败');
     }
@@ -337,8 +386,11 @@ class ApiService {
     );
 
     // 查询验证结果
-    final predicateResult =
-        await _getResponse('predicate', studentID, predicateID);
+    final predicateResult = await _getResponse(
+      'predicate',
+      studentID,
+      predicateID,
+    );
     if (!(predicateResult['success'] as bool)) {
       throw Exception(predicateResult['errorMessage'] ?? '验证失败');
     }
@@ -355,5 +407,10 @@ class ApiService {
     if (!(result['success'] as bool)) {
       throw Exception(result['errorMessage'] ?? '退课失败');
     }
+  }
+
+  Future<List<int>> getStudentID() async {
+    final data = await _requestList('GET', '/student/course-select/students');
+    return List<int>.from(data);
   }
 }
