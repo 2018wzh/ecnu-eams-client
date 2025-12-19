@@ -34,7 +34,8 @@ dependencies:
   # 工具
   intl: ^0.18.1
   url_launcher: ^6.2.2
-  
+  package_info_plus: ^8.0.0
+
   # 本地通知
   flutter_local_notifications: ^17.0.0
 
