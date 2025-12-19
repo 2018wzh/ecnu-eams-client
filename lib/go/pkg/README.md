@@ -6,7 +6,7 @@ Go语言实现的ECNU选课系统API客户端库。
 
 ```bash
 go get github.com/ecnu-eams-client/course-selection/pkg/api
-go get github.com/ecnu-eams-client/course-selection/pkg/auth
+go get github.com/2018wzh/ecnu-eams-client
 go get github.com/ecnu-eams-client/course-selection/pkg/robber
 ```
 
@@ -17,7 +17,7 @@ go get github.com/ecnu-eams-client/course-selection/pkg/robber
 ```go
 import (
     "github.com/ecnu-eams-client/course-selection/pkg/api"
-    "github.com/ecnu-eams-client/course-selection/pkg/auth"
+    "github.com/2018wzh/ecnu-eams-client"
 )
 ```
 
@@ -66,8 +66,4 @@ robber.AddTarget(lessonID, 0, 1)
 robber.SetInterval(100 * time.Millisecond)
 robber.Start()
 ```
-
-## API文档
-
-详见 [docs/选课.md](../docs/选课.md)
 

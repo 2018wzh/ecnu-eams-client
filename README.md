@@ -1,6 +1,6 @@
 # ECNU选课系统客户端
 
-基于Go和Flutter开发的ECNU选课系统客户端，支持浏览课程、选课、退课和抢课功能。
+基于Flutter开发的ECNU选课系统客户端，支持浏览课程、选课、退课和抢课功能。
 
 ## 功能特性
 
@@ -13,17 +13,8 @@
 - ✅ 提供Go库供二次开发
 
 ### 前置要求
-
-- Go 1.21+
 - Flutter 3.0+
 - Chrome/Chromium（用于浏览器登录）
-
-### 安装Go依赖
-
-```bash
-cd lib/go
-go mod tidy
-```
 
 ### 运行Flutter应用
 
@@ -66,98 +57,6 @@ flutter run
 3. 开启抢课开关
 4. 系统会自动轮询检查课程名额并尝试选课
 
-## Go库使用示例
-
-```go
-package main
-
-import (
-    "fmt"
-    "github.com/ecnu-eams-client/course-selection/pkg/api"
-    "github.com/ecnu-eams-client/course-selection/pkg/auth"
-)
-
-func main() {
-    // 浏览器登录获取Cookies
-    browserAuth, err := auth.NewBrowserAuth(false) // false表示显示浏览器窗口
-    if err != nil {
-        panic(err)
-    }
-    defer browserAuth.Close()
-
-    cookies, err := browserAuth.Login("https://byyt.ecnu.edu.cn/cas", 5*time.Minute)
-    if err != nil {
-        panic(err)
-    }
-
-    // 创建API客户端
-    client := api.NewClient()
-    client.SetCookies(cookies)
-
-    // 获取学生ID
-    studentIDs, err := client.GetStudentID()
-    if err != nil {
-        panic(err)
-    }
-    studentID := studentIDs[0]
-
-    // 获取选课轮次
-    turns, err := client.GetOpenTurns(studentID)
-    if err != nil {
-        panic(err)
-    }
-
-    // 选课
-    err = client.AddCourse(studentID, turns[0].ID, lessonID, 0)
-    if err != nil {
-        fmt.Printf("选课失败: %v\n", err)
-    } else {
-        fmt.Println("选课成功！")
-    }
-}
-```
-
-## 抢课功能
-
-```go
-// 创建抢课器
-robber := robber.NewRobber(client, studentID, turnID)
-
-// 添加抢课目标
-robber.AddTarget(lessonID, 0, 1) // lessonID, virtualCost, priority
-
-// 设置抢课间隔
-robber.SetInterval(100 * time.Millisecond)
-
-// 开始抢课
-err := robber.Start()
-if err != nil {
-    panic(err)
-}
-
-// 停止抢课
-robber.Stop()
-```
-
-## 注意事项
-
-1. **Cookie安全**: Cookies会保存在本地，请妥善保管
-2. **选课规则**: 请遵守学校的选课规则，不要滥用抢课功能
-3. **网络**: 确保网络连接稳定
-4. **浏览器**: 首次使用需要安装Chrome或Chromium
-
-## 开发
-
-### Go库开发
-
-```bash
-# 运行测试
-go test ./...
-
-# 构建
-go build ./...
-```
-
 ### Flutter开发
 
 ```bash
@@ -173,9 +72,21 @@ flutter run
 flutter build
 ```
 
+## API文档
+
+详见 [docs/选课.md](docs/选课.md)
+
+## 库
+
+### GO库
+详见 [lib/go/pkg/README.md](lib/go/pkg/README.md)
+
+### Python库
+WIP
+
 ## 许可证
 
-MIT License
+GNU General Public License v3.0 (GPL-3.0)
 
 ## 贡献
 
