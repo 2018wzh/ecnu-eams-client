@@ -34,6 +34,13 @@ class CourseProvider with ChangeNotifier {
   int get totalRows => _totalRows;
   Map<String, dynamic>? get filterConditions => _filterConditions;
 
+  int getTotalVirtualCost() {
+    return _selectedCourses.fold<int>(
+      0,
+      (sum, course) => sum + ((course['virtualCost'] as int?) ?? 0),
+    );
+  }
+
   // 抢课相关
   bool _isRobbing = false;
   List<Map<String, dynamic>> _robTargets = [];
@@ -224,6 +231,15 @@ class CourseProvider with ChangeNotifier {
 
       // 刷新已选课程
       await loadSelectedCourses(turnID, studentID);
+
+      // 更新新添加课程的virtualCost（API可能不返回此字段）
+      final addedCourse = _selectedCourses.firstWhere(
+        (course) => course['id'] == lessonID,
+        orElse: () => <String, dynamic>{},
+      );
+      if (addedCourse.isNotEmpty) {
+        addedCourse['virtualCost'] = virtualCost;
+      }
 
       return true;
     } catch (e) {

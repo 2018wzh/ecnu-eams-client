@@ -374,11 +374,20 @@ class CourseDetailSheet extends StatefulWidget {
 class _CourseDetailSheetState extends State<CourseDetailSheet> {
   Map<String, dynamic>? _countInfo;
   bool _isLoadingCount = false;
+  int _virtualCost = 0;
+  final TextEditingController _virtualCostController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadCountInfo();
+    _virtualCostController.text = '0';
+  }
+
+  @override
+  void dispose() {
+    _virtualCostController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCountInfo() async {
@@ -403,11 +412,24 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
       return;
     }
 
+    // 检查意愿值是否超过限制
+    final totalVirtualCost =
+        widget.courseProvider.getTotalVirtualCost() + _virtualCost;
+    if (totalVirtualCost > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('总意愿值不能超过100点，当前总计: $totalVirtualCost'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final success = await widget.courseProvider.addCourse(
       int.parse(widget.authProvider.studentID!),
       widget.authProvider.currentTurn!['id'],
       widget.course['id'],
-      widget.course['virtualCost'] ?? 0,
+      _virtualCost,
     );
 
     if (mounted) {
@@ -433,6 +455,9 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
   Widget build(BuildContext context) {
     final course = widget.course;
     final courseInfo = course['course'] as Map<String, dynamic>?;
+    final currentTurn = widget.authProvider.currentTurn;
+    final turnMode = currentTurn?['turnMode'] as Map<String, dynamic>?;
+    final enablePreSelect = turnMode?['enablePreSelect'] as bool? ?? false;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.9,
@@ -487,13 +512,75 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                 Text(
                     '教师: ${(course['teachers'] as List).map((t) => t['nameZh']).join(', ')}'),
               ],
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              // 显示当前总意愿值
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.account_balance_wallet,
+                        color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Text(
+                      '当前总意愿值: ${widget.courseProvider.getTotalVirtualCost()}/100',
+                      style: const TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // 意愿值设置（仅在开启预选时显示）
+              if (enablePreSelect) ...[
+                Text(
+                  '设置意愿值',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _virtualCostController,
+                  decoration: const InputDecoration(
+                    labelText: '意愿值 (0-100的整数)',
+                    hintText: '输入意愿值',
+                    border: OutlineInputBorder(),
+                    suffixText: '点',
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (value) {
+                    final intValue = int.tryParse(value) ?? 0;
+                    setState(() {
+                      _virtualCost = intValue.clamp(0, 100);
+                      _virtualCostController.text = _virtualCost.toString();
+                      _virtualCostController.selection =
+                          TextSelection.fromPosition(
+                        TextPosition(
+                            offset: _virtualCostController.text.length),
+                      );
+                    });
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '意愿值越高，预选成功率可能越高。总意愿值不能超过100点。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey,
+                      ),
+                ),
+                const SizedBox(height: 16),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _addCourse,
                   icon: const Icon(Icons.add),
-                  label: const Text('选课'),
+                  label: Text(enablePreSelect ? '预选课程' : '选课'),
                 ),
               ),
               const SizedBox(height: 8),
