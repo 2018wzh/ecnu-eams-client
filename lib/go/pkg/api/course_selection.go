@@ -1,6 +1,6 @@
 package api
 
-import "../../../../pkg/api/fmt"
+import "fmt"
 
 // GetStudentID 获取学生ID
 func (c *Client) GetStudentID() ([]int, error) {

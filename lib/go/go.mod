@@ -1,4 +1,4 @@
-module github.com/ecnu-eams-client/course-selection
+module github.com/2018wzh/ecnu-eams-client
 
 go 1.21
 

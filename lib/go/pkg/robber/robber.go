@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ecnu-eams-client/course-selection/pkg/api"
+	"github.com/2018wzh/ecnu-eams-client/pkg/api"
 )
 
 // Robber 抢课器
@@ -23,9 +23,9 @@ type Robber struct {
 
 // Target 抢课目标
 type Target struct {
-	LessonID   int
+	LessonID    int
 	VirtualCost int
-	Priority   int // 优先级，数字越大优先级越高
+	Priority    int // 优先级，数字越大优先级越高
 }
 
 // NewRobber 创建抢课器
@@ -55,11 +55,11 @@ func (r *Robber) SetMaxRetries(maxRetries int) {
 func (r *Robber) AddTarget(lessonID, virtualCost, priority int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.targets = append(r.targets, Target{
-		LessonID:   lessonID,
+		LessonID:    lessonID,
 		VirtualCost: virtualCost,
-		Priority:   priority,
+		Priority:    priority,
 	})
 }
 
@@ -67,7 +67,7 @@ func (r *Robber) AddTarget(lessonID, virtualCost, priority int) {
 func (r *Robber) RemoveTarget(lessonID int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	for i, target := range r.targets {
 		if target.LessonID == lessonID {
 			r.targets = append(r.targets[:i], r.targets[i+1:]...)
@@ -87,7 +87,7 @@ func (r *Robber) ClearTargets() {
 func (r *Robber) GetTargets() []Target {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	result := make([]Target, len(r.targets))
 	copy(result, r.targets)
 	return result
@@ -113,11 +113,11 @@ func (r *Robber) Start() error {
 func (r *Robber) Stop() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if !r.running {
 		return
 	}
-	
+
 	r.running = false
 	close(r.stopCh)
 }
@@ -185,4 +185,3 @@ func (r *Robber) tryRob() {
 func (r *Robber) RobCourse(lessonID, virtualCost int) error {
 	return r.client.AddCourse(r.studentID, r.turnID, lessonID, virtualCost)
 }
-

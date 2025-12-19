@@ -10,33 +10,7 @@
 - ✅ 抢课功能（自动轮询选课）
 - ✅ 友好的用户界面
 - ✅ 跨平台支持（Windows、macOS、Linux、Android、iOS）
-
-## 项目结构
-
-```
-.
-├── pkg/                    # Go库
-│   ├── api/               # API客户端
-│   │   ├── client.go      # HTTP客户端
-│   │   ├── models.go      # 数据模型
-│   │   └── course_selection.go  # 选课API方法
-│   ├── auth/              # 认证模块
-│   │   └── browser.go     # 浏览器登录
-│   └── robber/            # 抢课模块
-│       └── robber.go      # 抢课器
-├── app/           # Flutter应用
-│   ├── lib/
-│   │   ├── main.dart      # 入口文件
-│   │   ├── providers/     # 状态管理
-│   │   ├── screens/       # 界面
-│   │   ├── services/      # API服务
-│   │   └── widgets/       # 组件
-│   └── pubspec.yaml       # 依赖配置
-└── docs/                  # 文档
-    └── 选课.md            # API文档
-```
-
-## 快速开始
+- ✅ 提供Go库供二次开发
 
 ### 前置要求
 
@@ -47,6 +21,7 @@
 ### 安装Go依赖
 
 ```bash
+cd lib/go
 go mod tidy
 ```
 

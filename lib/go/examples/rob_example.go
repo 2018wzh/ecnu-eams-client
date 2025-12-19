@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ecnu-eams-client/course-selection/pkg/api"
-	"github.com/ecnu-eams-client/course-selection/pkg/auth"
-	"github.com/ecnu-eams-client/course-selection/pkg/robber"
+	"github.com/2018wzh/ecnu-eams-client/pkg/api"
+	"github.com/2018wzh/ecnu-eams-client/pkg/auth"
+	"github.com/2018wzh/ecnu-eams-client/pkg/robber"
 )
 
 // RobExample 抢课示例

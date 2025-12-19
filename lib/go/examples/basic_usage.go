@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/ecnu-eams-client/course-selection/pkg/api"
-	"github.com/ecnu-eams-client/course-selection/pkg/auth"
+	"github.com/2018wzh/ecnu-eams-client/pkg/api"
+	"github.com/2018wzh/ecnu-eams-client/pkg/auth"
 )
 
 // BasicUsageExample 基础使用示例

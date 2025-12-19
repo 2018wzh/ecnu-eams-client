@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/ecnu-eams-client/course-selection/examples"
+	"github.com/2018wzh/ecnu-eams-client/examples"
 )
 
 func main() {
