@@ -189,11 +189,36 @@ class _RobScreenState extends State<RobScreen> {
                       itemCount: courseProvider.robTargets.length,
                       itemBuilder: (context, index) {
                         final target = courseProvider.robTargets[index];
+                        final status =
+                            courseProvider.robTargetStatuses[target['id']] ??
+                                {};
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
                           child: ListTile(
-                            title: Text(target['name'] ?? ''),
-                            subtitle: Text('优先级: ${target['priority']}'),
+                            title: Text(target['course']['nameZh'] ?? ''),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('优先级: ${target['priority']}'),
+                                if (courseProvider.isRobbing &&
+                                    status.isNotEmpty)
+                                  Text(
+                                    '状态: ${status['status']} | 余量: ${status['available']}/${status['limitCount']} | 已选: ${status['stdCount']}',
+                                    style: TextStyle(
+                                      color: status['available'] > 0
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                if (status['lastChecked'] != null)
+                                  Text(
+                                    '最后检查: ${status['lastChecked'].hour.toString().padLeft(2, '0')}:${status['lastChecked'].minute.toString().padLeft(2, '0')}:${status['lastChecked'].second.toString().padLeft(2, '0')}',
+                                    style: const TextStyle(
+                                        fontSize: 10, color: Colors.grey),
+                                  ),
+                              ],
+                            ),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () {
