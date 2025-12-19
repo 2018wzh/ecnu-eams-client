@@ -1,0 +1,51 @@
+version: 1.0.0
+AppDir:
+  path: ./AppDir
+  app_info:
+    id: ecnu.eams.client
+    name: ECNU选课系统
+    icon: ecnu-eams-client
+    version: latest
+    exec: ecnu_eams_client
+    exec_args: "$@"
+
+ingredients:
+  dist: focal
+  sources:
+    - deb http://archive.ubuntu.com/ubuntu/ focal main restricted universe multiverse
+    - deb http://archive.ubuntu.com/ubuntu/ focal-updates main restricted universe multiverse
+    - deb http://archive.ubuntu.com/ubuntu/ focal-security main restricted universe multiverse
+  packages:
+    - libgtk-3-0
+    - libblkid1
+    - liblzma5
+    - libgtk-3-0
+    - libglib2.0-0
+    - libgdk-pixbuf2.0-0
+    - libcairo-gobject2
+    - libpango-1.0-0
+    - libatk1.0-0
+    - libcairo2
+    - libgdk-pixbuf2.0-0
+    - libfontconfig1
+    - libfreetype6
+    - libglib2.0-0
+    - libgtk-3-0
+    - libpango-1.0-0
+    - libpangocairo-1.0-0
+    - libx11-6
+    - libxcomposite1
+    - libxdamage1
+    - libxext6
+    - libxfixes3
+    - libxrandr2
+    - libgbm1
+    - libxss1
+    - libasound2
+    - libdrm2
+    - libxkbcommon0
+    - libgtk-3-0
+
+script:
+  - cp -r ../build/linux/x64/release/bundle/* ./AppDir/
+  - chmod +x ./AppDir/ecnu_eams_client

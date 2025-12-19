@@ -24,6 +24,60 @@ flutter pub get
 flutter run
 ```
 
+## 构建和发布
+
+本项目使用GitHub Actions自动构建多平台可执行程序。
+
+### 自动构建触发条件
+
+- **推送Tag**: 当推送以`v`开头的tag时，会自动构建所有平台并创建GitHub Release
+- **手动触发**: 在GitHub Actions页面手动触发构建
+
+### 支持的平台
+
+- **Android**: APK和AAB格式
+- **Windows**: MSIX包
+- **Linux**: AppImage格式
+- **macOS**: DMG包
+- **Web**: 静态网站文件
+
+### 本地构建
+
+#### Android
+```bash
+cd app
+flutter build apk --release  # 构建APK
+flutter build appbundle --release  # 构建AAB
+```
+
+#### Windows
+```bash
+cd app
+flutter config --enable-windows-desktop
+flutter build windows --release
+flutter pub run msix:create --release  # 创建MSIX包
+```
+
+#### Linux
+```bash
+cd app
+flutter config --enable-linux-desktop
+flutter build linux --release
+```
+
+#### macOS
+```bash
+cd app
+flutter config --enable-macos-desktop
+flutter build macos --release
+```
+
+#### Web
+```bash
+cd app
+flutter build web --release
+```
+
 ## 使用说明
 
 ### 1. 登录
