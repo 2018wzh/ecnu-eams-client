@@ -207,14 +207,14 @@ class ApiService {
     return data['data'] as Map<String, dynamic>;
   }
 
-  Future<String> _addDropRequest(
-    String action, {
+  Future<String> _addPredicate({
     required int studentID,
     required int turnID,
     required int lessonID,
     int virtualCost = 0,
   }) async {
-    final body = {
+    late final Map<String, dynamic> body;
+    body = {
       'studentAssoc': studentID,
       'courseSelectTurnAssoc': turnID,
       'requestMiddleDtos': [
@@ -226,8 +226,67 @@ class ApiService {
       'coursePackAssoc': null,
     };
 
-    final data =
-        await _request('POST', '/student/course-select/$action', body: body);
+    final data = await _request('POST', '/student/course-select/add-predicate',
+        body: body);
+    return data.toString();
+  }
+
+  Future<String> _addRequest({
+    required int studentID,
+    required int turnID,
+    required int lessonID,
+    int virtualCost = 0,
+  }) async {
+    late final Map<String, dynamic> body;
+    body = {
+      'studentAssoc': studentID,
+      'courseSelectTurnAssoc': turnID,
+      'requestMiddleDtos': [
+        {
+          'lessonAssoc': lessonID,
+          'virtualCost': virtualCost,
+        }
+      ],
+      'coursePackAssoc': null,
+    };
+
+    final data = await _request('POST', '/student/course-select/add-request',
+        body: body);
+    return data.toString();
+  }
+
+  Future<String> _dropPredicate({
+    required int studentID,
+    required int turnID,
+    required int lessonID,
+  }) async {
+    late final Map<String, dynamic> body;
+    body = {
+      'studentAssoc': studentID,
+      'courseSelectTurnAssoc': turnID,
+      'lessonAssocSet': [lessonID]
+    };
+
+    final data = await _request('POST', '/student/course-select/drop-predicate',
+        body: body);
+    return data.toString();
+  }
+
+  Future<String> _dropRequest({
+    required int studentID,
+    required int turnID,
+    required int lessonID,
+  }) async {
+    late final Map<String, dynamic> body;
+    body = {
+      'studentAssoc': studentID,
+      'courseSelectTurnAssoc': turnID,
+      'lessonAssocs': [lessonID],
+      'coursePackAssoc': null,
+    };
+
+    final data = await _request('POST', '/student/course-select/drop-request',
+        body: body);
     return data.toString();
   }
 
@@ -240,8 +299,7 @@ class ApiService {
   Future<void> addCourse(
       int studentID, int turnID, int lessonID, int virtualCost) async {
     // 先验证
-    final predicateID = await _addDropRequest(
-      'add-predicate',
+    final predicateID = await _addPredicate(
       studentID: studentID,
       turnID: turnID,
       lessonID: lessonID,
@@ -256,8 +314,7 @@ class ApiService {
     }
 
     // 提交选课请求
-    final requestID = await _addDropRequest(
-      'add-request',
+    final requestID = await _addRequest(
       studentID: studentID,
       turnID: turnID,
       lessonID: lessonID,
@@ -273,8 +330,7 @@ class ApiService {
 
   Future<void> dropCourse(int studentID, int turnID, int lessonID) async {
     // 先验证
-    final predicateID = await _addDropRequest(
-      'drop-predicate',
+    final predicateID = await _dropPredicate(
       studentID: studentID,
       turnID: turnID,
       lessonID: lessonID,
@@ -288,8 +344,7 @@ class ApiService {
     }
 
     // 提交退课请求
-    final requestID = await _addDropRequest(
-      'drop-request',
+    final requestID = await _dropRequest(
       studentID: studentID,
       turnID: turnID,
       lessonID: lessonID,

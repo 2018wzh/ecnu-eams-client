@@ -17,7 +17,8 @@ class _RobScreenState extends State<RobScreen> {
   void initState() {
     super.initState();
     final courseProvider = context.read<CourseProvider>();
-    _intervalController.text = courseProvider.robInterval.inMilliseconds.toString();
+    _intervalController.text =
+        courseProvider.robInterval.inMilliseconds.toString();
   }
 
   @override
@@ -26,7 +27,8 @@ class _RobScreenState extends State<RobScreen> {
     super.dispose();
   }
 
-  Future<void> _selectScheduledTime(BuildContext context, CourseProvider courseProvider) async {
+  Future<void> _selectScheduledTime(
+      BuildContext context, CourseProvider courseProvider) async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
@@ -61,9 +63,12 @@ class _RobScreenState extends State<RobScreen> {
                   Row(
                     children: [
                       Icon(
-                        courseProvider.isRobbing ? Icons.flash_on : Icons.flash_off,
-                        color:
-                            courseProvider.isRobbing ? Colors.orange : Colors.grey,
+                        courseProvider.isRobbing
+                            ? Icons.flash_on
+                            : Icons.flash_off,
+                        color: courseProvider.isRobbing
+                            ? Colors.orange
+                            : Colors.grey,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -112,7 +117,8 @@ class _RobScreenState extends State<RobScreen> {
                         child: ElevatedButton(
                           onPressed: courseProvider.isRobbing
                               ? null
-                              : () => _selectScheduledTime(context, courseProvider),
+                              : () =>
+                                  _selectScheduledTime(context, courseProvider),
                           child: Text(
                             courseProvider.scheduledStartTime != null
                                 ? '${courseProvider.scheduledStartTime!.hour.toString().padLeft(2, '0')}:${courseProvider.scheduledStartTime!.minute.toString().padLeft(2, '0')}'
@@ -122,7 +128,8 @@ class _RobScreenState extends State<RobScreen> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: () => courseProvider.setScheduledStartTime(null),
+                        onPressed: () =>
+                            courseProvider.setScheduledStartTime(null),
                         icon: const Icon(Icons.clear),
                         tooltip: '清除定时',
                       ),
@@ -142,12 +149,14 @@ class _RobScreenState extends State<RobScreen> {
                           decoration: const InputDecoration(
                             hintText: '500',
                             border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                           ),
                           onChanged: (value) {
                             final interval = int.tryParse(value);
                             if (interval != null && interval > 0) {
-                              courseProvider.setRobInterval(Duration(milliseconds: interval));
+                              courseProvider.setRobInterval(
+                                  Duration(milliseconds: interval));
                             }
                           },
                         ),

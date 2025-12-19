@@ -48,7 +48,7 @@ class CourseCard extends StatelessWidget {
               ),
               if (courseInfo != null) ...[
                 const SizedBox(height: 8),
-                Text('教学班: ${courseInfo['nameZh']} (${courseInfo['code']})'),
+                Text('教学班: ${courseInfo['code']}'),
                 Text('学分: ${courseInfo['credits']}'),
               ],
               if (teachers != null && teachers.isNotEmpty) ...[

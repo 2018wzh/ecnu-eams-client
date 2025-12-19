@@ -18,7 +18,8 @@ class SelectedCoursesScreen extends StatelessWidget {
           );
         }
 
-        if (courseProvider.selectedCourses.isEmpty && !courseProvider.isLoading) {
+        if (courseProvider.selectedCourses.isEmpty &&
+            !courseProvider.isLoading) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -86,7 +87,8 @@ class SelectedCoursesScreen extends StatelessWidget {
                           context: context,
                           builder: (context) => AlertDialog(
                             title: const Text('确认退课'),
-                            content: Text('确定要退选 ${course['nameZh'] ?? course['code']} 吗？'),
+                            content: Text(
+                                '确定要退选 ${course['course']['nameZh'] ?? course['course']['nameEn']} 吗？'),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context, false),
@@ -94,13 +96,15 @@ class SelectedCoursesScreen extends StatelessWidget {
                               ),
                               TextButton(
                                 onPressed: () => Navigator.pop(context, true),
-                                child: const Text('确认', style: TextStyle(color: Colors.red)),
+                                child: const Text('确认',
+                                    style: TextStyle(color: Colors.red)),
                               ),
                             ],
                           ),
                         );
 
-                        if (confirmed == true && authProvider.studentID != null) {
+                        if (confirmed == true &&
+                            authProvider.studentID != null) {
                           final success = await courseProvider.dropCourse(
                             int.parse(authProvider.studentID!),
                             authProvider.currentTurn!['id'],
@@ -132,4 +136,3 @@ class SelectedCoursesScreen extends StatelessWidget {
     );
   }
 }
-
