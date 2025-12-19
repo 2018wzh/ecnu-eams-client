@@ -76,14 +76,6 @@ flutter build
 
 详见 [docs/选课.md](docs/选课.md)
 
-## 库
-
-### GO库
-详见 [lib/go/pkg/README.md](lib/go/pkg/README.md)
-
-### Python库
-WIP
-
 ## 许可证
 
 GNU General Public License v3.0 (GPL-3.0)
