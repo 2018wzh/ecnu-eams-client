@@ -25,6 +25,12 @@ class _FilterDialogState extends State<FilterDialog> {
   double? _creditGte;
   double? _creditLte;
   final TextEditingController _teacherController = TextEditingController();
+  final TextEditingController _lessonController = TextEditingController();
+  bool _onlyAvailable = false;
+  bool _onlyWithCount = false;
+  String? _selectedWeek;
+  String _sortField = 'lesson';
+  String _sortType = 'ASC';
 
   @override
   void initState() {
@@ -43,8 +49,14 @@ class _FilterDialogState extends State<FilterDialog> {
         _selectedMajorId = cached['majorId'];
         _selectedGrade = cached['grade'];
         _teacherController.text = cached['teacherName'] ?? '';
+        _lessonController.text = cached['lessonName'] ?? '';
         _creditGte = cached['creditGte'];
         _creditLte = cached['creditLte'];
+        _onlyAvailable = cached['onlyAvailable'] ?? false;
+        _onlyWithCount = cached['onlyWithCount'] ?? false;
+        _selectedWeek = cached['week'];
+        _sortField = cached['sortField'] ?? 'lesson';
+        _sortType = cached['sortType'] ?? 'ASC';
       });
     }
   }
@@ -52,6 +64,7 @@ class _FilterDialogState extends State<FilterDialog> {
   @override
   void dispose() {
     _teacherController.dispose();
+    _lessonController.dispose();
     super.dispose();
   }
 
@@ -95,6 +108,21 @@ class _FilterDialogState extends State<FilterDialog> {
               ),
               const SizedBox(height: 16),
 
+              // 教学班名称
+              const Text('教学班名称:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _lessonController,
+                decoration: const InputDecoration(
+                  hintText: '输入教学班名称或代码',
+                  border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+              const SizedBox(height: 16),
+
               // 年级
               if (grades.isNotEmpty) ...[
                 const Text('年级:',
@@ -127,6 +155,59 @@ class _FilterDialogState extends State<FilterDialog> {
                 ),
                 const SizedBox(height: 16),
               ],
+
+              // 上课星期
+              const Text('上课星期:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String?>(
+                initialValue: _selectedWeek,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: const [
+                  DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('全部'),
+                  ),
+                  const DropdownMenuItem<String?>(
+                    value: '1',
+                    child: Text('星期一'),
+                  ),
+                  const DropdownMenuItem<String?>(
+                    value: '2',
+                    child: Text('星期二'),
+                  ),
+                  const DropdownMenuItem<String?>(
+                    value: '3',
+                    child: Text('星期三'),
+                  ),
+                  const DropdownMenuItem<String?>(
+                    value: '4',
+                    child: Text('星期四'),
+                  ),
+                  const DropdownMenuItem<String?>(
+                    value: '5',
+                    child: Text('星期五'),
+                  ),
+                  const DropdownMenuItem<String?>(
+                    value: '6',
+                    child: Text('星期六'),
+                  ),
+                  const DropdownMenuItem<String?>(
+                    value: '7',
+                    child: Text('星期日'),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _selectedWeek = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
 
               // 校区
               if (campuses.isNotEmpty) ...[
@@ -341,6 +422,95 @@ class _FilterDialogState extends State<FilterDialog> {
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+
+              // 其他选项
+              const Text('其他选项:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                title: const Text('仅显示可选课程'),
+                value: _onlyAvailable,
+                onChanged: (value) {
+                  setState(() {
+                    _onlyAvailable = value ?? false;
+                  });
+                },
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
+                title: const Text('仅显示有余量课程'),
+                value: _onlyWithCount,
+                onChanged: (value) {
+                  setState(() {
+                    _onlyWithCount = value ?? false;
+                  });
+                },
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              const SizedBox(height: 16),
+
+              // 排序选项
+              const Text('排序方式:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _sortField,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'lesson',
+                          child: Text('按教学班'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'course',
+                          child: Text('按课程'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _sortField = value ?? 'lesson';
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _sortType,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'ASC',
+                          child: Text('升序'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'DESC',
+                          child: Text('降序'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _sortType = value ?? 'ASC';
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -357,8 +527,14 @@ class _FilterDialogState extends State<FilterDialog> {
               _selectedMajorId = null;
               _selectedGrade = null;
               _teacherController.clear();
+              _lessonController.clear();
               _creditGte = null;
               _creditLte = null;
+              _onlyAvailable = false;
+              _onlyWithCount = false;
+              _selectedWeek = null;
+              _sortField = 'lesson';
+              _sortType = 'ASC';
             });
           },
           child: const Text('清除'),
@@ -377,8 +553,14 @@ class _FilterDialogState extends State<FilterDialog> {
               'majorId': _selectedMajorId,
               'grade': _selectedGrade,
               'teacherName': _teacherController.text,
+              'lessonName': _lessonController.text,
               'creditGte': _creditGte?.toString(),
               'creditLte': _creditLte?.toString(),
+              'onlyAvailable': _onlyAvailable,
+              'onlyWithCount': _onlyWithCount,
+              'week': _selectedWeek,
+              'sortField': _sortField,
+              'sortType': _sortType,
             };
             await widget.courseProvider.saveFilterConditions(result);
             if (mounted) {

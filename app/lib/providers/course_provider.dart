@@ -37,11 +37,13 @@ class CourseProvider with ChangeNotifier {
   DateTime? _scheduledStartTime;
   Duration _robInterval = const Duration(milliseconds: 500);
   Timer? _robTimer;
+  Map<int, Map<String, dynamic>> _robTargetStatuses = {}; // 监控状态
 
   bool get isRobbing => _isRobbing;
   List<Map<String, dynamic>> get robTargets => _robTargets;
   DateTime? get scheduledStartTime => _scheduledStartTime;
   Duration get robInterval => _robInterval;
+  Map<int, Map<String, dynamic>> get robTargetStatuses => _robTargetStatuses;
 
   Future<void> loadQueryCondition(int turnID) async {
     try {
@@ -104,14 +106,20 @@ class CourseProvider with ChangeNotifier {
     required int semesterID,
     String? courseName,
     String? teacherName,
+    String? lessonName,
     String? campusId,
     String? courseTypeId,
     String? coursePropertyId,
     String? departmentId,
     String? majorId,
     String? grade,
+    String? week,
     String? creditGte,
     String? creditLte,
+    bool onlyAvailable = false,
+    bool onlyWithCount = false,
+    String sortField = 'lesson',
+    String sortType = 'ASC',
     int pageNo = 1,
     int pageSize = 20,
   }) async {
@@ -125,6 +133,7 @@ class CourseProvider with ChangeNotifier {
         turnID: turnID,
         semesterID: semesterID,
         courseNameOrCode: courseName ?? '',
+        lessonNameOrCode: lessonName ?? '',
         teacherNameOrCode: teacherName ?? '',
         campusId: campusId ?? '',
         courseTypeId: courseTypeId ?? '',
@@ -132,8 +141,13 @@ class CourseProvider with ChangeNotifier {
         departmentId: departmentId ?? '',
         majorId: majorId ?? '',
         grade: grade ?? '',
+        week: week ?? '',
         creditGte: creditGte,
         creditLte: creditLte,
+        canSelect: onlyAvailable ? 1 : 0,
+        hasCount: onlyWithCount ? true : null,
+        sortField: sortField,
+        sortType: sortType,
         pageNo: pageNo,
         pageSize: pageSize,
       );
@@ -232,16 +246,28 @@ class CourseProvider with ChangeNotifier {
     if (!_robTargets.any((target) => target['id'] == course['id'])) {
       _robTargets.add({
         'id': course['id'],
-        'name': course['nameZh'] ?? course['code'],
+        'name': course['course']['nameZh'] ??
+            course['course']['nameEn'] ??
+            course['code'] ??
+            '',
         'virtualCost': course['virtualCost'] ?? 0,
         'priority': _robTargets.length + 1,
       });
+      // 初始化监控状态
+      _robTargetStatuses[course['id']] = {
+        'available': 0,
+        'limitCount': 0,
+        'stdCount': 0,
+        'lastChecked': null,
+        'status': '未监控',
+      };
       notifyListeners();
     }
   }
 
   void removeRobTarget(int lessonID) {
     _robTargets.removeWhere((target) => target['id'] == lessonID);
+    _robTargetStatuses.remove(lessonID);
     notifyListeners();
   }
 

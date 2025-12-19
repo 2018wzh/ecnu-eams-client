@@ -24,8 +24,14 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
   String? _selectedMajorId;
   String? _selectedGrade;
   String? _teacherName;
+  String? _lessonName;
   String? _creditGte;
   String? _creditLte;
+  String? _selectedWeek;
+  bool _onlyAvailable = false;
+  bool _onlyWithCount = false;
+  String _sortField = 'lesson';
+  String _sortType = 'ASC';
 
   bool _hasSearchFilters() {
     return _searchController.text.isNotEmpty ||
@@ -36,8 +42,12 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
         _selectedMajorId != null ||
         _selectedGrade != null ||
         _teacherName != null ||
+        _lessonName != null ||
         _creditGte != null ||
-        _creditLte != null;
+        _creditLte != null ||
+        _selectedWeek != null ||
+        _onlyAvailable ||
+        _onlyWithCount;
   }
 
   Future<void> _search({int pageNo = 1}) async {
@@ -68,14 +78,20 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
         semesterID: semesterID,
         courseName: _searchController.text,
         teacherName: _teacherName,
+        lessonName: _lessonName,
         campusId: _selectedCampusId,
         courseTypeId: _selectedCourseTypeId,
         coursePropertyId: _selectedCoursePropertyId,
         departmentId: _selectedDepartmentId,
         majorId: _selectedMajorId,
         grade: _selectedGrade,
+        week: _selectedWeek,
         creditGte: _creditGte,
         creditLte: _creditLte,
+        onlyAvailable: _onlyAvailable,
+        onlyWithCount: _onlyWithCount,
+        sortField: _sortField,
+        sortType: _sortType,
         pageNo: pageNo,
       );
 
@@ -114,12 +130,14 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
           _selectedMajorId = cached['majorId'];
           _selectedGrade = cached['grade'];
           _teacherName = cached['teacherName'];
-          _creditGte = cached['creditGte'] is String
-              ? double.tryParse(cached['creditGte'])
-              : cached['creditGte'];
-          _creditLte = cached['creditLte'] is String
-              ? double.tryParse(cached['creditLte'])
-              : cached['creditLte'];
+          _lessonName = cached['lessonName'];
+          _creditGte = cached['creditGte'] as String?;
+          _creditLte = cached['creditLte'] as String?;
+          _selectedWeek = cached['week'];
+          _onlyAvailable = cached['onlyAvailable'] ?? false;
+          _onlyWithCount = cached['onlyWithCount'] ?? false;
+          _sortField = cached['sortField'] ?? 'lesson';
+          _sortType = cached['sortType'] ?? 'ASC';
         }
 
         return Column(
@@ -157,7 +175,7 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
                         await courseProvider.loadQueryCondition(turnID);
                       }
 
-                      final result = await showDialog<Map<String, String?>>(
+                      final result = await showDialog<Map<String, Object?>>(
                         context: context,
                         builder: (context) => FilterDialog(
                           queryCondition: courseProvider.queryCondition,
@@ -167,16 +185,27 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
 
                       if (result != null) {
                         setState(() {
-                          _selectedCampusId = result['campusId'];
-                          _selectedCourseTypeId = result['courseTypeId'];
+                          _selectedCampusId = result['campusId'] as String?;
+                          _selectedCourseTypeId =
+                              result['courseTypeId'] as String?;
                           _selectedCoursePropertyId =
-                              result['coursePropertyId'];
-                          _selectedDepartmentId = result['departmentId'];
-                          _selectedMajorId = result['majorId'];
-                          _selectedGrade = result['grade'];
-                          _teacherName = result['teacherName'];
-                          _creditGte = result['creditGte'];
-                          _creditLte = result['creditLte'];
+                              result['coursePropertyId'] as String?;
+                          _selectedDepartmentId =
+                              result['departmentId'] as String?;
+                          _selectedMajorId = result['majorId'] as String?;
+                          _selectedGrade = result['grade'] as String?;
+                          _teacherName = result['teacherName'] as String?;
+                          _lessonName = result['lessonName'] as String?;
+                          _creditGte = result['creditGte'] as String?;
+                          _creditLte = result['creditLte'] as String?;
+                          _selectedWeek = result['week'] as String?;
+                          _onlyAvailable =
+                              (result['onlyAvailable'] as bool?) ?? false;
+                          _onlyWithCount =
+                              (result['onlyWithCount'] as bool?) ?? false;
+                          _sortField =
+                              (result['sortField'] as String?) ?? 'lesson';
+                          _sortType = (result['sortType'] as String?) ?? 'ASC';
                         });
                         _search();
                       }
