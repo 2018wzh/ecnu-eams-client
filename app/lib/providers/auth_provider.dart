@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/auth_token_normalizer.dart';
 
 class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
@@ -18,9 +19,10 @@ class AuthProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
 
   Future<void> setAuthorization(String authorization) async {
+    final normalized = AuthTokenNormalizer.normalize(authorization);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('authorization', authorization);
-    _apiService.setAuthorization(authorization);
+    await prefs.setString('authorization', normalized);
+    _apiService.setAuthorization(normalized);
     _isAuthenticated = true;
     notifyListeners();
   }

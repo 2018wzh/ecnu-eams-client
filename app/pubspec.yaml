@@ -38,6 +38,7 @@ dependencies:
 
   # 本地通知
   flutter_local_notifications: ^17.0.0
+  desktop_webview_window: ^0.3.0
 
 dev_dependencies:
   flutter_test:

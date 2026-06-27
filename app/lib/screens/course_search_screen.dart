@@ -175,6 +175,7 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
                         await courseProvider.loadQueryCondition(turnID);
                       }
 
+                      if (!context.mounted) return;
                       final result = await showDialog<Map<String, Object?>>(
                         context: context,
                         builder: (context) => FilterDialog(
@@ -183,6 +184,7 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
                         ),
                       );
 
+                      if (!mounted) return;
                       if (result != null) {
                         setState(() {
                           _selectedCampusId = result['campusId'] as String?;
@@ -589,7 +591,10 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        widget.courseProvider.addMonitorTarget(widget.course);
+                        widget.courseProvider.addMonitorTarget(
+                          widget.course,
+                          virtualCost: _virtualCost,
+                        );
                         if (mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -605,7 +610,10 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        widget.courseProvider.addRobTarget(widget.course);
+                        widget.courseProvider.addRobTarget(
+                          widget.course,
+                          virtualCost: _virtualCost,
+                        );
                         if (mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(

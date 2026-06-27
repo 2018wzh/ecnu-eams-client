@@ -108,6 +108,13 @@ class _RobScreenState extends State<RobScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '开启后将自动提交选课请求；低于 500ms 的间隔可能增加限流或账号风险。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.orange.shade800,
+                        ),
+                  ),
                   const SizedBox(height: 16),
                   // 定时开始设置
                   Row(
@@ -129,8 +136,9 @@ class _RobScreenState extends State<RobScreen> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: () =>
-                            courseProvider.setScheduledStartTime(null),
+                        onPressed: courseProvider.isRobbing
+                            ? null
+                            : () => courseProvider.setScheduledStartTime(null),
                         icon: const Icon(Icons.clear),
                         tooltip: '清除定时',
                       ),
@@ -199,7 +207,7 @@ class _RobScreenState extends State<RobScreen> {
                           countInfo: status.isNotEmpty
                               ? {
                                   'stdCount': status['stdCount'] ?? 0,
-                                  'amStdCount': 0, // 抢课目标可能没有跨专业信息
+                                  'amStdCount': status['amStdCount'] ?? 0,
                                 }
                               : null,
                           showDropButton: true,

@@ -4,12 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../providers/auth_provider.dart';
+import '../services/app_log_service.dart';
+import '../services/desktop_login_service.dart';
 import '../utils/error_dialog.dart';
-
-// Conditional imports for webview
-import 'package:webview_flutter/webview_flutter.dart'
-    if (dart.library.html) 'package:webview_flutter_web/webview_flutter_web.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   WebViewController? _controller;
   bool _isLoading = true;
   bool _useExternalBrowser = false;
+  final AppLogService _logService = AppLogService();
 
   @override
   void initState() {
@@ -131,29 +131,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('authorization', authorization);
 
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.setAuthorization(authorization);
-
-      try {
-        await authProvider.loadStudentInfo();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('登录成功！'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ErrorDialog.showError(
-            context: context,
-            error: e,
-            title: '加载用户信息失败',
-          );
-        }
-      }
+      if (!mounted) return;
+      await _completeLogin(authorization, successLogEvent: 'mobile_webview');
     } catch (e) {
       debugPrint('提取Authorization失败: $e');
       if (mounted) {
@@ -184,6 +163,61 @@ class _LoginScreenState extends State<LoginScreen> {
           message: '请检查系统是否安装了浏览器，或手动访问登录页面',
         );
       }
+    }
+  }
+
+  Future<void> _openDesktopWebView() async {
+    setState(() {
+      _isLoading = true;
+    });
+    final result = await DesktopLoginService().login();
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+    });
+    if (result.success) {
+      await _completeLogin(result.authorization!,
+          successLogEvent: 'desktop_webview');
+      return;
+    }
+    await _logService.write(
+      'login',
+      result.errorMessage ?? 'desktop webview login failed',
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.errorMessage ?? '内置登录失败，请手动输入 Token')),
+      );
+      _showAuthorizationInputDialog();
+    }
+  }
+
+  Future<bool> _completeLogin(
+    String authorization, {
+    required String successLogEvent,
+  }) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    try {
+      await authProvider.setAuthorization(authorization);
+      await authProvider.loadStudentInfo();
+      await _logService.write('login', successLogEvent, data: {'ok': true});
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('登录成功！'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      return true;
+    } catch (e) {
+      await _logService.write('login', 'failed', data: {'error': e.toString()});
+      if (!mounted) return false;
+      ErrorDialog.showError(
+        context: context,
+        error: e,
+        title: '登录失败',
+      );
+      return false;
     }
   }
 
@@ -238,32 +272,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
               String authorization = authController.text.trim();
 
-              final authProvider =
-                  Provider.of<AuthProvider>(context, listen: false);
-              await authProvider.setAuthorization(authorization);
-
-              try {
-                await authProvider.loadStudentInfo();
-
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('登录成功！'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  Navigator.pop(context);
-                  ErrorDialog.showError(
-                    context: context,
-                    error: e,
-                    title: '登录失败',
-                  );
-                }
-              }
+              final success = await _completeLogin(
+                authorization,
+                successLogEvent: 'manual_token',
+              );
+              if (success && context.mounted) Navigator.pop(context);
             },
             child: const Text('确定'),
           ),
@@ -288,16 +301,30 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Icon(Icons.open_in_browser,
                         size: 64, color: Colors.blue),
                     const SizedBox(height: 24),
-                    const Text(
-                      '将在外部浏览器中打开登录页面',
-                      style: TextStyle(fontSize: 18),
+                    Text(
+                      kIsWeb
+                          ? 'Web 版本需要手动输入 Authorization Token'
+                          : Platform.isWindows
+                              ? '将在内置浏览器中打开登录页面'
+                              : '将在外部浏览器中打开登录页面',
+                      style: const TextStyle(fontSize: 18),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
-                      onPressed: _openExternalBrowser,
-                      icon: const Icon(Icons.launch),
-                      label: const Text('打开浏览器登录'),
+                      onPressed: kIsWeb
+                          ? _showAuthorizationInputDialog
+                          : Platform.isWindows
+                              ? _openDesktopWebView
+                              : _openExternalBrowser,
+                      icon: const Icon(kIsWeb ? Icons.key : Icons.launch),
+                      label: Text(
+                        kIsWeb
+                            ? '输入 Authorization Token'
+                            : Platform.isWindows
+                                ? '打开内置浏览器登录'
+                                : '打开浏览器登录',
+                      ),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 24, vertical: 12),

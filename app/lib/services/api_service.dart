@@ -1,19 +1,36 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/course_action_result.dart';
+import '../models/polling_config.dart';
+import 'auth_token_normalizer.dart';
+
+typedef AuthorizationProvider = Future<String?> Function();
 
 class ApiService {
   static const String baseURL =
       'https://byyt.ecnu.edu.cn/course-selection-api/api/v1';
 
   String? _authorization;
+  final http.Client _client;
+  final AuthorizationProvider? _authorizationProvider;
+
+  ApiService({
+    http.Client? client,
+    AuthorizationProvider? authorizationProvider,
+  })  : _client = client ?? http.Client(),
+        _authorizationProvider = authorizationProvider;
 
   void setAuthorization(String authorization) {
-    _authorization = authorization;
+    _authorization = AuthTokenNormalizer.normalize(authorization);
   }
 
   Future<String?> _getAuthorization() async {
     if (_authorization != null) return _authorization;
+
+    if (_authorizationProvider != null) {
+      return _authorizationProvider!();
+    }
 
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('authorization');
@@ -40,9 +57,9 @@ class ApiService {
 
     http.Response response;
     if (method == 'GET') {
-      response = await http.get(url, headers: headers);
+      response = await _client.get(url, headers: headers);
     } else {
-      response = await http.post(
+      response = await _client.post(
         url,
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
@@ -148,7 +165,7 @@ class ApiService {
     String openDepartmentId = '',
     String courseTypeId = '',
     String coursePropertyId = '',
-    int canSelect = 1,
+    int? canSelect,
     String? creditGte,
     String? creditLte,
     bool? hasCount,
@@ -179,7 +196,11 @@ class ApiService {
       'courseTypeId': courseTypeId,
       'coursePropertyId': coursePropertyId,
       'canSelect': canSelect,
-      '_canSelect': canSelect == 1 ? '可选' : '不可选',
+      '_canSelect': canSelect == null
+          ? ''
+          : canSelect == 1
+              ? '可选'
+              : '不可选',
       'creditGte': creditGte,
       'creditLte': creditLte,
       'hasCount': hasCount,
@@ -215,7 +236,7 @@ class ApiService {
       '$baseURL/student/course-select/count-info?lessonId=$lessonID',
     );
     final headers = await _getHeaders();
-    final response = await http.get(url, headers: headers);
+    final response = await _client.get(url, headers: headers);
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}');
@@ -327,86 +348,180 @@ class ApiService {
     return data.toString();
   }
 
-  Future<Map<String, dynamic>> _getResponse(
+  Future<Map<String, dynamic>?> waitForCourseResponse(
     String type,
     int studentID,
     String requestID,
+    PollingConfig polling,
   ) async {
-    return await _requestMap(
-      'GET',
-      '/student/course-select/$type-response/$studentID/$requestID',
-    );
+    final config = polling.normalized();
+    final started = DateTime.now();
+    while (DateTime.now().difference(started) <= config.timeout) {
+      final data = await _request(
+        'GET',
+        '/student/course-select/$type-response/$studentID/$requestID',
+      );
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      await Future.delayed(config.interval);
+    }
+    return null;
   }
 
-  Future<void> addCourse(
+  Future<CourseActionResult> addCourse(
     int studentID,
     int turnID,
     int lessonID,
-    int virtualCost,
-  ) async {
-    // 先验证
-    final predicateID = await _addPredicate(
+    int virtualCost, {
+    PollingConfig? polling,
+  }) async {
+    return _courseAction(
+      predicate: () => _addPredicate(
+        studentID: studentID,
+        turnID: turnID,
+        lessonID: lessonID,
+        virtualCost: virtualCost,
+      ),
+      request: () => _addRequest(
+        studentID: studentID,
+        turnID: turnID,
+        lessonID: lessonID,
+        virtualCost: virtualCost,
+      ),
       studentID: studentID,
-      turnID: turnID,
-      lessonID: lessonID,
-      virtualCost: virtualCost,
+      polling: polling ?? PollingConfig.defaults,
+      failurePrefix: '选课失败',
     );
+  }
 
-    // 查询验证结果
-    final predicateResult = await _getResponse(
-      'predicate',
-      studentID,
-      predicateID,
-    );
-    if (!(predicateResult['success'] as bool)) {
-      throw Exception(predicateResult['errorMessage'] ?? '验证失败');
-    }
-
-    // 提交选课请求
-    final requestID = await _addRequest(
+  Future<CourseActionResult> dropCourse(
+    int studentID,
+    int turnID,
+    int lessonID, {
+    PollingConfig? polling,
+  }) async {
+    return _courseAction(
+      predicate: () => _dropPredicate(
+        studentID: studentID,
+        turnID: turnID,
+        lessonID: lessonID,
+      ),
+      request: () => _dropRequest(
+        studentID: studentID,
+        turnID: turnID,
+        lessonID: lessonID,
+      ),
       studentID: studentID,
-      turnID: turnID,
-      lessonID: lessonID,
-      virtualCost: virtualCost,
+      polling: polling ?? PollingConfig.defaults,
+      failurePrefix: '退课失败',
     );
+  }
 
-    // 查询选课结果
-    final result = await _getResponse('add-drop', studentID, requestID);
-    if (!(result['success'] as bool)) {
-      throw Exception(result['errorMessage'] ?? '选课失败');
+  Future<CourseActionResult> _courseAction({
+    required Future<String> Function() predicate,
+    required Future<String> Function() request,
+    required int studentID,
+    required PollingConfig polling,
+    required String failurePrefix,
+  }) async {
+    final started = DateTime.now();
+    var attempts = 0;
+    try {
+      final predicateID = await predicate();
+      final predicateResult = await _pollResponse(
+        'predicate',
+        studentID,
+        predicateID,
+        polling,
+        onAttempt: () => attempts++,
+      );
+      if (predicateResult == null) {
+        return CourseActionResult.failure(
+          '$failurePrefix: 验证超时',
+          requestId: predicateID,
+          attempts: attempts,
+          elapsedMs: DateTime.now().difference(started).inMilliseconds,
+        );
+      }
+      if (!(predicateResult['success'] as bool? ?? false)) {
+        return CourseActionResult.failure(
+          (predicateResult['errorMessage'] ??
+                  predicateResult['exception'] ??
+                  '验证失败')
+              .toString(),
+          requestId: predicateID,
+          attempts: attempts,
+          elapsedMs: DateTime.now().difference(started).inMilliseconds,
+        );
+      }
+
+      final requestID = await request();
+      final result = await _pollResponse(
+        'add-drop',
+        studentID,
+        requestID,
+        polling,
+        onAttempt: () => attempts++,
+      );
+      if (result == null) {
+        return CourseActionResult.failure(
+          '$failurePrefix: 请求超时',
+          requestId: requestID,
+          attempts: attempts,
+          elapsedMs: DateTime.now().difference(started).inMilliseconds,
+        );
+      }
+      if (!(result['success'] as bool? ?? false)) {
+        return CourseActionResult.failure(
+          (result['errorMessage'] ?? result['exception'] ?? failurePrefix)
+              .toString(),
+          requestId: requestID,
+          attempts: attempts,
+          elapsedMs: DateTime.now().difference(started).inMilliseconds,
+        );
+      }
+      return CourseActionResult.success(
+        requestId: requestID,
+        lessonResults: Map<String, dynamic>.from(
+          (result['result'] as Map?) ?? const {},
+        ),
+        attempts: attempts,
+        elapsedMs: DateTime.now().difference(started).inMilliseconds,
+      );
+    } catch (e) {
+      final text = e.toString();
+      final authExpired = text.contains('HTTP 401');
+      return CourseActionResult.failure(
+        authExpired ? '登录已过期' : text.replaceFirst('Exception: ', ''),
+        attempts: attempts,
+        elapsedMs: DateTime.now().difference(started).inMilliseconds,
+        authExpired: authExpired,
+      );
     }
   }
 
-  Future<void> dropCourse(int studentID, int turnID, int lessonID) async {
-    // 先验证
-    final predicateID = await _dropPredicate(
-      studentID: studentID,
-      turnID: turnID,
-      lessonID: lessonID,
-    );
-
-    // 查询验证结果
-    final predicateResult = await _getResponse(
-      'predicate',
-      studentID,
-      predicateID,
-    );
-    if (!(predicateResult['success'] as bool)) {
-      throw Exception(predicateResult['errorMessage'] ?? '验证失败');
+  Future<Map<String, dynamic>?> _pollResponse(
+    String type,
+    int studentID,
+    String requestID,
+    PollingConfig polling, {
+    required void Function() onAttempt,
+  }) async {
+    final config = polling.normalized();
+    final started = DateTime.now();
+    while (DateTime.now().difference(started) <= config.timeout) {
+      onAttempt();
+      final data = await _request(
+        'GET',
+        '/student/course-select/$type-response/$studentID/$requestID',
+      );
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      await Future.delayed(config.interval);
     }
-
-    // 提交退课请求
-    final requestID = await _dropRequest(
-      studentID: studentID,
-      turnID: turnID,
-      lessonID: lessonID,
-    );
-
-    // 查询退课结果
-    final result = await _getResponse('add-drop', studentID, requestID);
-    if (!(result['success'] as bool)) {
-      throw Exception(result['errorMessage'] ?? '退课失败');
-    }
+    return null;
   }
 
   Future<List<int>> getStudentID() async {

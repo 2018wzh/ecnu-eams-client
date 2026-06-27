@@ -89,6 +89,13 @@ class _MonitorScreenState extends State<MonitorScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '监控到余量后将自动提交选课请求。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.blue.shade800,
+                        ),
+                  ),
                   const SizedBox(height: 16),
                   // 监控间隔设置
                   Row(
@@ -156,7 +163,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                           countInfo: status.isNotEmpty
                               ? {
                                   'stdCount': status['stdCount'] ?? 0,
-                                  'amStdCount': 0, // 监控目标可能没有跨专业信息
+                                  'amStdCount': status['amStdCount'] ?? 0,
                                 }
                               : null,
                           showDropButton: true,

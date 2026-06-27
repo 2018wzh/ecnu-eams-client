@@ -172,31 +172,31 @@ class _FilterDialogState extends State<FilterDialog> {
                     value: null,
                     child: Text('全部'),
                   ),
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: '1',
                     child: Text('星期一'),
                   ),
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: '2',
                     child: Text('星期二'),
                   ),
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: '3',
                     child: Text('星期三'),
                   ),
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: '4',
                     child: Text('星期四'),
                   ),
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: '5',
                     child: Text('星期五'),
                   ),
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: '6',
                     child: Text('星期六'),
                   ),
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: '7',
                     child: Text('星期日'),
                   ),
@@ -563,7 +563,7 @@ class _FilterDialogState extends State<FilterDialog> {
               'sortType': _sortType,
             };
             await widget.courseProvider.saveFilterConditions(result);
-            if (mounted) {
+            if (context.mounted) {
               Navigator.pop(context, result);
             }
           },

@@ -5,10 +5,14 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/course_provider.dart';
+import 'services/desktop_webview_bootstrap.dart';
 import 'services/notification_service.dart';
 
-void main() async {
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (runDesktopWebViewTitleBar(args)) {
+    return;
+  }
 
   // 初始化通知服务
   await NotificationService.initialize();
@@ -43,7 +47,13 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: authProvider),
-        ChangeNotifierProvider(create: (_) => CourseProvider()),
+        ChangeNotifierProvider(
+          create: (_) {
+            final provider = CourseProvider();
+            provider.loadAutomationState();
+            return provider;
+          },
+        ),
       ],
       child: MaterialApp(
         title: 'ECNU选课系统',

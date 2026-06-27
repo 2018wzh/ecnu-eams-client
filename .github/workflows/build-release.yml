@@ -12,7 +12,27 @@ on:
         type: string
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: 'stable'
+
+      - name: Analyze and test
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
   build-android:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -61,6 +81,7 @@ jobs:
             app/build/app/outputs/bundle/release/*.aab
 
   build-windows:
+    needs: verify
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -97,6 +118,7 @@ jobs:
             app/build/windows/x64/runner/Release/*.msix
 
   build-linux:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -131,6 +153,7 @@ jobs:
             app/build/linux/x64/release/bundle/*
 
   build-web:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -160,6 +183,7 @@ jobs:
           zip -r ../../../web-build.zip .
 
   build-macos:
+    needs: verify
     runs-on: macos-latest
     steps:
       - name: Checkout code

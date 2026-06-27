@@ -49,7 +49,7 @@ class NotificationService {
     int available,
     int limitCount,
   ) async {
-    final title = '课程余量提醒';
+    const title = '课程余量提醒';
     final body = '$courseName 现在有余量！剩余 $available/$limitCount';
 
     await showNotification(
