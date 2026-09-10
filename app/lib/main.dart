@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'providers/auth_provider.dart';
@@ -19,22 +19,8 @@ void main(List<String> args) async {
 
   // 初始化认证状态
   final authProvider = AuthProvider();
-  await _initializeAuth(authProvider);
-
   runApp(MyApp(authProvider: authProvider));
-}
-
-Future<void> _initializeAuth(AuthProvider authProvider) async {
-  final prefs = await SharedPreferences.getInstance();
-  final authorization = prefs.getString('authorization');
-  if (authorization != null && authorization.isNotEmpty) {
-    await authProvider.setAuthorization(authorization);
-    final isValid = await authProvider.checkTokenValidity();
-    if (!isValid) {
-      await prefs.remove('authorization');
-      authProvider.logout();
-    }
-  }
+  unawaited(authProvider.initialize());
 }
 
 class MyApp extends StatelessWidget {
@@ -50,7 +36,6 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final provider = CourseProvider();
-            provider.loadAutomationState();
             return provider;
           },
         ),
@@ -89,6 +74,10 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
+        if (authProvider.isInitializing) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
         if (authProvider.isAuthenticated) {
           return const HomeScreen();
         } else {

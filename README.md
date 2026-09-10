@@ -1,143 +1,79 @@
-# ECNU选课系统客户端
+# ECNU 选课客户端
 
-基于Flutter开发的ECNU选课系统客户端，支持浏览课程、选课、退课和抢课功能。
+Flutter GUI 与纯 Dart CLI 共用选课接口和抢课执行层。
 
-## 功能特性
+- 课程、教学班、教师、院系、校区、学分、可选状态和余量筛选，支持分页与排序。
+- 手动选课、退课，以及服务端验证、结果轮询和已选课程核对。
+- 按优先级自动抢课，支持定时开始、停止、结果记录和按账号/轮次保存目标。
+- 只提醒、不提交选课的课程余量监控。
+- GUI 导出包含 Token 的 Base64 配置，直接复制命令交给 CLI 运行。
+- 请求超时、限流退避、未确认提交保护，以及 GUI/CLI 本机运行互斥。
 
-- ✅ 浏览器登录获取Cookie
-- ✅ 浏览和搜索课程
-- ✅ 选课和退课
-- ✅ 抢课功能（自动轮询选课）
-- ✅ 友好的用户界面
-- ✅ 跨平台支持（Windows、macOS、Linux、Android、iOS）
-- ✅ 提供Go库供二次开发
+## 启动 GUI
 
-### 前置要求
-- Flutter 3.0+
-- Chrome/Chromium（用于浏览器登录）
+开发和 CI 统一使用 Flutter 3.44.1，依赖版本由仓库中的 pubspec.lock 固定。
 
-### 运行Flutter应用
-
-```bash
+```sh
 cd app
 flutter pub get
 flutter run
 ```
 
-## 构建和发布
+Windows 支持 WebView2 内置登录；移动端使用 WebView；其他桌面平台可以在浏览器登录后输入 Authorization Token。登录验证成功后才进入主界面。选择轮次后会加载课程和该轮次保存的目标。
 
-本项目使用GitHub Actions自动构建多平台可执行程序。
+## GUI → CLI
 
-### 自动构建触发条件
+在抢课列表设置目标和优先级，点击“停止并导出 CLI 配置”，复制 Base64 配置或完整启动命令。
 
-- **推送Tag**: 当推送以`v`开头的tag时，会自动构建所有平台并创建GitHub Release
-- **手动触发**: 在GitHub Actions页面手动触发构建
-
-### 支持的平台
-
-- **Android**: APK和AAB格式
-- **Windows**: MSIX包
-- **Linux**: AppImage格式
-- **macOS**: DMG包
-- **Web**: 静态网站文件
-
-### 本地构建
-
-#### Android
-```bash
-cd app
-flutter build apk --release  # 构建APK
-flutter build appbundle --release  # 构建AAB
+```sh
+cd packages/eams_core
+dart pub get
+dart run bin/eams.dart --config "<Base64配置>" --check
+dart run bin/eams.dart --config "<Base64配置>"
 ```
 
-#### Windows
-```bash
+配置已包含当前登录 Token，无需额外输入。第一条命令只检查配置和官网状态，第二条运行抢课。按 Ctrl+C 停止。
+
+完整说明、独立编译方式和恢复规则见 [CLI 文档](docs/cli.md)。
+
+## 运行边界
+
+- GUI 必须保持运行；没有手机后台常驻或电脑防休眠机制。长时间运行可以交给 CLI，运行设备仍需保持唤醒。
+- 停止无法撤销已发送的请求；程序会继续核对，不能确认时暂停并要求人工查看官网。
+- 任务按学生、轮次、学期隔离；切换轮次或退出前先停止任务。旧版未绑定身份的任务缓存不再加载。
+- 系统通知支持 Android、iOS、macOS、Linux，需要相应权限和系统通知服务；Windows/Web 请在界面查看状态。
+- Web 版能否访问官网接口取决于学校的跨域策略；CLI 和原生客户端不受浏览器跨域限制。
+- 培养方案、课表选课、课程包和替代重修尚未提供完整客户端流程，可使用官网。
+
+## 项目结构与检查
+
+- `app/`：Flutter 界面、平台登录、配置保存和通知。
+- `packages/eams_core/`：共享 API、任务配置、执行器和 CLI。
+- [选课 API 说明](docs/选课.md)：已有接口说明，实际规则以官网为准。
+
+```sh
+cd packages/eams_core
+dart analyze
+dart test
+cd ../../app
+flutter analyze
+flutter test
+```
+
+## 构建
+
+```sh
 cd app
-flutter config --enable-windows-desktop
 flutter build windows --release
-flutter pub run msix:create --release  # 创建MSIX包
+# 在相应平台可使用 flutter build apk / linux / macos / web
 ```
 
-#### Linux
-```bash
-cd app
-flutter config --enable-linux-desktop
-flutter build linux --release
-```
+推送与源码版本一致的 `vX.Y.Z` tag 后，GitHub Actions 自动检查、构建并发布 Android 签名 APK/AAB、Windows 便携 ZIP、Linux bundle 压缩包、macOS app 压缩包、Web 压缩包及各桌面平台 CLI，同时提供 SHA256SUMS。带 `-alpha.N`、`-beta.N`、`-rc.N` 的版本自动标为 Pre-release。手动触发只构建，不发布。
 
-#### macOS
-```bash
-cd app
-flutter config --enable-macos-desktop
-flutter build macos --release
-```
+发布步骤和签名配置见 [发布文档](docs/releasing.md)，平台运行要求见 [下载说明](docs/release-notes.md)。Windows 包未做 Authenticode 签名，macOS 包尚未签名公证；iOS 不在自动发布范围内。
 
-#### Web
-```bash
-cd app
-flutter build web --release
-```
-
-## 使用说明
-
-### 1. 登录
-
-1. 打开应用后，会自动打开登录页面
-2. 在WebView中完成ECNU统一认证登录
-3. 登录成功后，Cookies会自动保存
-
-### 2. 选择选课轮次
-
-1. 在"选课轮次"标签页中选择当前要使用的选课轮次
-2. 系统会自动加载该轮次的相关信息
-
-### 3. 搜索课程
-
-1. 切换到"搜索课程"标签页
-2. 输入课程名称或代码进行搜索
-3. 可以使用筛选条件（校区、课程类型等）
-4. 点击课程卡片查看详情并选课
-
-### 4. 查看已选课程
-
-1. 切换到"已选课程"标签页
-2. 查看当前已选的所有课程
-3. 可以在此退选课程
-
-### 5. 抢课功能
-
-1. 在搜索课程时，可以将课程添加到抢课列表
-2. 切换到"抢课"标签页
-3. 开启抢课开关
-4. 系统会自动轮询检查课程名额并尝试选课
-
-### Flutter开发
-
-```bash
-cd app
-
-# 获取依赖
-flutter pub get
-
-# 运行
-flutter run
-
-# 构建
-flutter build
-```
-
-## API文档
-
-详见 [docs/选课.md](docs/选课.md)
+GUI 使用系统安全存储保存登录凭据；旧版明文 Token 会被清除，需要重新登录。Web 使用浏览器加密存储，需要 HTTPS。更多数据处理说明见 [隐私说明](docs/privacy.md)。
 
 ## 许可证
 
-GNU General Public License v3.0 (GPL-3.0)
-
-## 贡献
-
-欢迎提交Issue和Pull Request！
-
-## 免责声明
-
-本工具仅供学习和研究使用，使用者需自行承担使用风险。请遵守学校相关规定，不得用于任何违法违规用途。
+GPL-3.0。请遵守学校的选课和接口使用规定。

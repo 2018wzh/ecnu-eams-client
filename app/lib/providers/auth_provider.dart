@@ -1,30 +1,65 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/api_service.dart';
-import '../services/auth_token_normalizer.dart';
+import 'package:eams_core/eams_core.dart';
+import '../services/credentials.dart';
 
 class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
+  bool _isInitializing = true;
   String? _studentID;
   List<Map<String, dynamic>>? _turns;
   Map<String, dynamic>? _currentTurn;
   String? _errorMessage;
 
   bool get isAuthenticated => _isAuthenticated;
+  bool get isInitializing => _isInitializing;
   String? get studentID => _studentID;
   List<Map<String, dynamic>>? get turns => _turns;
   Map<String, dynamic>? get currentTurn => _currentTurn;
   String? get errorMessage => _errorMessage;
 
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService;
+  AuthProvider({ApiService? apiService})
+    : _apiService = apiService ?? createApiService();
+
+  Future<void> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey('authorization') &&
+          !await prefs.remove('authorization')) {
+        throw StateError('清除旧登录凭据失败');
+      }
+      final token = await credentialStorage.read(key: 'authorization');
+      if (token != null && token.isNotEmpty) await setAuthorization(token);
+    } catch (e) {
+      _errorMessage = '恢复登录失败，请重试: $e';
+    } finally {
+      _isInitializing = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> setAuthorization(String authorization) async {
     final normalized = AuthTokenNormalizer.normalize(authorization);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('authorization', normalized);
     _apiService.setAuthorization(normalized);
-    _isAuthenticated = true;
-    notifyListeners();
+    try {
+      await loadStudentInfo();
+      if (_studentID == null) throw StateError('未找到学生信息');
+      await credentialStorage.write(key: 'authorization', value: normalized);
+      _isAuthenticated = true;
+      notifyListeners();
+    } catch (e) {
+      _isAuthenticated = false;
+      _studentID = null;
+      _turns = null;
+      _currentTurn = null;
+      _apiService.clearAuthorization();
+      if (e is ApiException && e.authExpired) {
+        await credentialStorage.delete(key: 'authorization');
+      }
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> loadStudentInfo() async {
@@ -35,7 +70,8 @@ class AuthProvider with ChangeNotifier {
         _studentID = studentIDs.first.toString();
         await loadTurns();
       } else {
-        _errorMessage = '未找到学生信息';
+        _studentID = null;
+        throw StateError('未找到学生信息');
       }
       notifyListeners();
     } catch (e) {
@@ -67,22 +103,13 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('authorization');
+    await credentialStorage.delete(key: 'authorization');
+    _apiService.clearAuthorization();
     _isAuthenticated = false;
     _studentID = null;
     _turns = null;
     _currentTurn = null;
+    _errorMessage = null;
     notifyListeners();
-  }
-
-  Future<bool> checkTokenValidity() async {
-    try {
-      await _apiService.getCurrentDateTime();
-      return true;
-    } catch (e) {
-      // 如果是401或其他错误，认为token无效
-      return false;
-    }
   }
 }

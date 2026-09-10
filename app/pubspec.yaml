@@ -1,12 +1,14 @@
 name: ecnu_eams_client
 description: ECNU选课系统客户端
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.12.0 <4.0.0'
 
 dependencies:
+  eams_core:
+    path: ../packages/eams_core
   flutter:
     sdk: flutter
   
@@ -39,6 +41,7 @@ dependencies:
   # 本地通知
   flutter_local_notifications: ^17.0.0
   desktop_webview_window: ^0.3.0
+  flutter_secure_storage: 10.0.0
 
 dev_dependencies:
   flutter_test:
@@ -49,4 +52,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-

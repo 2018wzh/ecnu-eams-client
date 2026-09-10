@@ -5,7 +5,7 @@ import '../providers/course_provider.dart';
 import '../utils/error_dialog.dart';
 import '../widgets/course_card.dart';
 import '../widgets/filter_dialog.dart';
-import '../services/api_service.dart';
+import '../services/credentials.dart';
 
 class CourseSearchScreen extends StatefulWidget {
   const CourseSearchScreen({super.key});
@@ -16,7 +16,16 @@ class CourseSearchScreen extends StatefulWidget {
 
 class _CourseSearchScreenState extends State<CourseSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final ApiService _apiService = ApiService();
+  final _apiService = createApiService();
+  int? _filterTurnId;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _apiService.close();
+    super.dispose();
+  }
+
   String? _selectedCampusId;
   String? _selectedCourseTypeId;
   String? _selectedCoursePropertyId;
@@ -120,9 +129,10 @@ class _CourseSearchScreenState extends State<CourseSearchScreen> {
     return Consumer2<AuthProvider, CourseProvider>(
       builder: (context, authProvider, courseProvider, _) {
         // 初始化筛选条件缓存
-        if (courseProvider.filterConditions != null &&
-            _selectedCampusId == null) {
-          final cached = courseProvider.filterConditions!;
+        if (_filterTurnId != authProvider.currentTurn?['id']) {
+          _filterTurnId = authProvider.currentTurn?['id'];
+          _searchController.clear();
+          final cached = courseProvider.filterConditions ?? <String, dynamic>{};
           _selectedCampusId = cached['campusId'];
           _selectedCourseTypeId = cached['courseTypeId'];
           _selectedCoursePropertyId = cached['coursePropertyId'];
@@ -397,12 +407,25 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
       _isLoadingCount = true;
     });
 
-    final countInfo =
-        await widget.courseProvider.getCountInfo(widget.course['id']);
-    setState(() {
-      _countInfo = countInfo;
-      _isLoadingCount = false;
-    });
+    try {
+      final countInfo =
+          await widget.courseProvider.getCountInfo(widget.course['id']);
+      if (mounted) {
+        setState(() {
+          _countInfo = countInfo;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorDialog.showError(context: context, error: e, title: '余量查询失败');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingCount = false;
+        });
+      }
+    }
   }
 
   Future<void> _addCourse() async {
@@ -410,19 +433,6 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
         widget.authProvider.currentTurn == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先选择选课轮次')),
-      );
-      return;
-    }
-
-    // 检查意愿值是否超过限制
-    final totalVirtualCost =
-        widget.courseProvider.getTotalVirtualCost() + _virtualCost;
-    if (totalVirtualCost > 100) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('总意愿值不能超过100点，当前总计: $totalVirtualCost'),
-          backgroundColor: Colors.red,
-        ),
       );
       return;
     }
@@ -456,10 +466,16 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final course = widget.course;
+    final liveProvider = context.watch<CourseProvider>();
+    final busy = liveProvider.isActing ||
+        liveProvider.isRobbing ||
+        liveProvider.isMonitoring;
     final courseInfo = course['course'] as Map<String, dynamic>?;
     final currentTurn = widget.authProvider.currentTurn;
     final turnMode = currentTurn?['turnMode'] as Map<String, dynamic>?;
     final enablePreSelect = turnMode?['enablePreSelect'] as bool? ?? false;
+    final enableVirtualWallet =
+        turnMode?['enableVirtualWallet'] as bool? ?? false;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.9,
@@ -501,10 +517,11 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 8),
-                Text('总名额: ${_countInfo!['limitCount']}'),
-                Text('已选: ${_countInfo!['stdCount']}'),
+                Text('普通名额上限: ${_countInfo!['limitCount']}'),
+                Text('普通已选人数: ${_countInfo!['stdCount']}'),
                 Text(
-                    '剩余: ${(_countInfo!['limitCount'] as int) - (_countInfo!['stdCount'] as int)}'),
+                    '普通名额余量: ${(_countInfo!['limitCount'] as int) - (_countInfo!['stdCount'] as int)}'),
+                const Text('能否选课以当前学生的服务端资格校验为准。'),
                 const Divider(),
               ],
               if (course['dateTimePlace'] != null)
@@ -516,31 +533,32 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
               ],
               const SizedBox(height: 16),
               // 显示当前总意愿值
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.account_balance_wallet,
-                        color: Colors.blue),
-                    const SizedBox(width: 8),
-                    Text(
-                      '当前总意愿值: ${widget.courseProvider.getTotalVirtualCost()}/100',
-                      style: const TextStyle(
-                        color: Colors.blue,
-                        fontWeight: FontWeight.w500,
+              if (enableVirtualWallet)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance_wallet,
+                          color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Text(
+                        '已选课程返回的意愿值合计: ${widget.courseProvider.getTotalVirtualCost()}',
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(height: 16),
               // 意愿值设置（仅在开启预选时显示）
-              if (enablePreSelect) ...[
+              if (enableVirtualWallet) ...[
                 Text(
                   '设置意愿值',
                   style: Theme.of(context).textTheme.titleMedium,
@@ -570,7 +588,7 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '意愿值越高，预选成功率可能越高。总意愿值不能超过100点。',
+                  '可分配意愿值和选课资格以当前轮次的服务端校验结果为准。',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.grey,
                       ),
@@ -580,7 +598,7 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _addCourse,
+                  onPressed: busy ? null : _addCourse,
                   icon: const Icon(Icons.add),
                   label: Text(enablePreSelect ? '预选课程' : '选课'),
                 ),
@@ -590,18 +608,25 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        widget.courseProvider.addMonitorTarget(
-                          widget.course,
-                          virtualCost: _virtualCost,
-                        );
-                        if (mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('已添加到监控列表')),
-                          );
-                        }
-                      },
+                      onPressed: busy
+                          ? null
+                          : () {
+                              try {
+                                widget.courseProvider.addMonitorTarget(
+                                    widget.course,
+                                    virtualCost: _virtualCost);
+                              } catch (e) {
+                                ErrorDialog.showError(
+                                    context: context, error: e);
+                                return;
+                              }
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('已添加到监控列表')),
+                                );
+                              }
+                            },
                       icon: const Icon(Icons.visibility),
                       label: const Text('添加到监控'),
                     ),
@@ -609,18 +634,25 @@ class _CourseDetailSheetState extends State<CourseDetailSheet> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        widget.courseProvider.addRobTarget(
-                          widget.course,
-                          virtualCost: _virtualCost,
-                        );
-                        if (mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('已添加到抢课列表')),
-                          );
-                        }
-                      },
+                      onPressed: busy
+                          ? null
+                          : () {
+                              try {
+                                widget.courseProvider.addRobTarget(
+                                    widget.course,
+                                    virtualCost: _virtualCost);
+                              } catch (e) {
+                                ErrorDialog.showError(
+                                    context: context, error: e);
+                                return;
+                              }
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('已添加到抢课列表')),
+                                );
+                              }
+                            },
                       icon: const Icon(Icons.flash_on),
                       label: const Text('添加到抢课'),
                     ),

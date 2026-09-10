@@ -2,7 +2,6 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../providers/auth_provider.dart';
@@ -128,9 +127,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('authorization', authorization);
-
       if (!mounted) return;
       await _completeLogin(authorization, successLogEvent: 'mobile_webview');
     } catch (e) {
@@ -170,25 +166,37 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _isLoading = true;
     });
-    final result = await DesktopLoginService().login();
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-    });
-    if (result.success) {
-      await _completeLogin(result.authorization!,
-          successLogEvent: 'desktop_webview');
-      return;
-    }
-    await _logService.write(
-      'login',
-      result.errorMessage ?? 'desktop webview login failed',
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.errorMessage ?? '内置登录失败，请手动输入 Token')),
+    try {
+      final result = await DesktopLoginService().login();
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      if (result.success) {
+        await _completeLogin(result.authorization!,
+            successLogEvent: 'desktop_webview');
+        return;
+      }
+      await _logService.write(
+        'login',
+        result.errorMessage ?? 'desktop webview login failed',
       );
-      _showAuthorizationInputDialog();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.errorMessage ?? '内置登录失败，请手动输入 Token')),
+        );
+        _showAuthorizationInputDialog();
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorDialog.showError(context: context, error: e, title: '内置登录失败');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -199,9 +207,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     try {
       await authProvider.setAuthorization(authorization);
-      await authProvider.loadStudentInfo();
-      await _logService.write('login', successLogEvent, data: {'ok': true});
-      if (!mounted) return false;
+      try {
+        await _logService.write('login', successLogEvent, data: {'ok': true});
+      } catch (e) {
+        debugPrint('登录成功，但日志写入失败: $e');
+      }
+      if (!mounted) return true;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('登录成功！'),
@@ -287,7 +298,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authError = context.watch<AuthProvider>().errorMessage;
     return Scaffold(
+      bottomNavigationBar: authError == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(authError,
+                  style: const TextStyle(color: Colors.red),
+                  textAlign: TextAlign.center)),
       appBar: AppBar(
         title: const Text('登录ECNU选课系统'),
       ),
@@ -312,11 +331,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
-                      onPressed: kIsWeb
-                          ? _showAuthorizationInputDialog
-                          : Platform.isWindows
-                              ? _openDesktopWebView
-                              : _openExternalBrowser,
+                      onPressed: _isLoading
+                          ? null
+                          : kIsWeb
+                              ? _showAuthorizationInputDialog
+                              : Platform.isWindows
+                                  ? _openDesktopWebView
+                                  : _openExternalBrowser,
                       icon: const Icon(kIsWeb ? Icons.key : Icons.launch),
                       label: Text(
                         kIsWeb

@@ -1,10 +1,25 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 
 class NotificationService {
+  static bool get supported =>
+      !kIsWeb && defaultTargetPlatform != TargetPlatform.windows;
+  static String? initializationError;
+  static Future<void> requestPermission() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final allowed = await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+      if (allowed == false) throw StateError('通知权限未开启，请在应用内查看监控结果');
+    }
+  }
+
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
   static Future<void> initialize() async {
+    if (!supported) return;
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -14,9 +29,16 @@ class NotificationService {
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
+      macOS: iosSettings,
+      linux: LinuxInitializationSettings(defaultActionName: '查看'),
     );
 
-    await _notificationsPlugin.initialize(settings);
+    try {
+      await _notificationsPlugin.initialize(settings);
+    } catch (e) {
+      initializationError = '系统通知初始化失败: $e';
+      debugPrint(initializationError);
+    }
   }
 
   static Future<void> showNotification({
@@ -24,6 +46,8 @@ class NotificationService {
     required String body,
     int id = 0,
   }) async {
+    if (!supported) return;
+    if (initializationError != null) throw StateError(initializationError!);
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
       'course_monitor_channel',
@@ -39,6 +63,8 @@ class NotificationService {
     const NotificationDetails details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
+      macOS: iosDetails,
+      linux: LinuxNotificationDetails(),
     );
 
     await _notificationsPlugin.show(id, title, body, details);

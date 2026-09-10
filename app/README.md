@@ -1,49 +1,9 @@
-# ECNU选课系统 Flutter客户端
+# Flutter GUI
 
-## 安装
-
-```bash
+```sh
 flutter pub get
-```
-
-## 运行
-
-```bash
 flutter run
 ```
 
-## 构建
-
-### Android
-```bash
-flutter build apk
-```
-
-### iOS
-```bash
-flutter build ios
-```
-
-### Windows
-```bash
-flutter build windows
-```
-
-### macOS
-```bash
-flutter build macos
-```
-
-### Linux
-```bash
-flutter build linux
-```
-
-## 功能
-
-- 浏览器登录获取Cookie
-- 浏览和搜索课程
-- 选课和退课
-- 抢课功能
-- 查看已选课程
-
+界面和平台适配位于本目录，选课与抢课逻辑来自 `../packages/eams_core`。
+GUI 可以生成 CLI 抢课配置；操作和运行限制见 [项目说明](../README.md) 和 [CLI 文档](../docs/cli.md)。

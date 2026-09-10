@@ -1,825 +1,748 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import '../models/course_action_result.dart';
-import '../models/polling_config.dart';
-import '../services/api_service.dart';
+import 'package:eams_core/eams_core.dart';
+import '../services/credentials.dart';
 import '../services/app_log_service.dart';
 import '../services/notification_service.dart';
 
 class CourseProvider with ChangeNotifier {
-  static const _automationStateKey = 'automation_state';
-
   final ApiService _apiService;
   final AppLogService _logService;
-
-  CourseProvider({
-    ApiService? apiService,
-    AppLogService? logService,
-  })  : _apiService = apiService ?? ApiService(),
+  CourseProvider({ApiService? apiService, AppLogService? logService})
+      : _apiService = apiService ?? createApiService(),
         _logService = logService ?? AppLogService();
 
   List<Map<String, dynamic>> _courses = [];
   List<Map<String, dynamic>> _selectedCourses = [];
   Map<String, dynamic>? _queryCondition;
-  bool _isLoading = false;
-  String? _errorMessage;
-
-  // 分页信息
-  int _currentPage = 1;
-  int _totalPages = 1;
-  int _totalRows = 0;
-
-  // 筛选条件缓存
   Map<String, dynamic>? _filterConditions;
-  Map<String, Map<String, dynamic>> _courseCountInfo = {}; // 课程名额信息
+  Map<String, Map<String, dynamic>> _courseCountInfo = {};
+  String? _errorMessage;
+  String? _selectedError;
+  String? _automationError;
+  String? _notificationWarning;
+  bool _isLoading = false;
+  bool _isActing = false;
+  bool _disposed = false;
+  int _currentPage = 1, _totalPages = 1, _totalRows = 0;
+  int? _studentId, _turnId, _semesterId;
+  int _contextVersion = 0, _searchVersion = 0;
   PollingConfig _pollingConfig = PollingConfig.defaults;
+  Duration _robInterval = const Duration(milliseconds: 500);
+  Duration _monitorInterval = const Duration(seconds: 5);
+  DateTime? _scheduledStartTime;
+  final List<Map<String, dynamic>> _robTargets = [];
+  final List<Map<String, dynamic>> _monitorTargets = [];
+  final Map<int, TaskUpdate> _robStates = {};
+  final Map<int, TaskUpdate> _monitorStates = {};
+  AutomationRunner? _robRunner, _monitorRunner;
+  Future<void>? _robFuture, _monitorFuture, _actionFuture;
+  CancellationToken? _manualCancellation;
+  Future<void> _writeTail = Future.value();
 
   List<Map<String, dynamic>> get courses => _courses;
   List<Map<String, dynamic>> get selectedCourses => _selectedCourses;
   Map<String, dynamic>? get queryCondition => _queryCondition;
-  bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
+  Map<String, dynamic>? get filterConditions => _filterConditions;
   Map<String, Map<String, dynamic>> get courseCountInfo => _courseCountInfo;
+  bool get isLoading => _isLoading;
+  bool get isActing => _isActing;
+  CancellationToken? _robStartup, _monitorStartup;
+  bool get isRobbing => _robStartup != null || _robRunner != null;
+  bool get isMonitoring => _monitorStartup != null || _monitorRunner != null;
+  String? get errorMessage => _errorMessage;
+  String? get selectedError => _selectedError;
+  String? get automationError => _automationError;
+  String? get notificationWarning => _notificationWarning;
   int get currentPage => _currentPage;
   int get totalPages => _totalPages;
   int get totalRows => _totalRows;
-  Map<String, dynamic>? get filterConditions => _filterConditions;
   PollingConfig get pollingConfig => _pollingConfig;
+  Duration get robInterval => _robInterval;
+  Duration get monitorInterval => _monitorInterval;
+  DateTime? get scheduledStartTime => _scheduledStartTime;
+  String? get contextKey => _stateKey;
+  List<Map<String, dynamic>> get robTargets => List.unmodifiable(_robTargets);
+  List<Map<String, dynamic>> get monitorTargets =>
+      List.unmodifiable(_monitorTargets);
+  Map<int, Map<String, dynamic>> get robTargetStatuses =>
+      _statusMaps(_robStates);
+  Map<int, Map<String, dynamic>> get monitorTargetStatuses =>
+      _statusMaps(_monitorStates);
+  bool get hasUncertainActions => _robStates.values.any(
+      (s) => s.phase == TaskPhase.uncertain || s.phase == TaskPhase.submitting);
 
-  int getTotalVirtualCost() {
-    return _selectedCourses.fold<int>(
-      0,
-      (sum, course) => sum + ((course['virtualCost'] as int?) ?? 0),
-    );
+  Map<int, Map<String, dynamic>> _statusMaps(Map<int, TaskUpdate> states) => {
+        for (final entry in states.entries)
+          entry.key: {
+            'status': entry.value.message,
+            'phase': entry.value.phase.name,
+            'lastChecked': entry.value.timestamp,
+            'attemptCount': entry.value.attempts,
+            'lastRequestId': entry.value.requestId,
+          },
+      };
+
+  void _changed() {
+    if (!_disposed) notifyListeners();
   }
 
-  // 抢课相关
-  bool _isRobbing = false;
-  final List<Map<String, dynamic>> _robTargets = [];
-  DateTime? _scheduledStartTime;
-  Duration _robInterval = const Duration(milliseconds: 500);
-  int _robRunID = 0;
-  final Map<int, Map<String, dynamic>> _robTargetStatuses = {}; // 监控状态
+  String? get _stateKey => _studentId == null
+      ? null
+      : 'automation_v2_${_studentId}_${_turnId}_$_semesterId';
 
-  // 监控相关
-  bool _isMonitoring = false;
-  final List<Map<String, dynamic>> _monitorTargets = [];
-  Duration _monitorInterval = const Duration(seconds: 5);
-  int _monitorRunID = 0;
-  final Map<int, Map<String, dynamic>> _monitorTargetStatuses = {}; // 监控状态
+  Future<void> bindContext(int studentId, int turnId, int semesterId) async {
+    if (_studentId == studentId &&
+        _turnId == turnId &&
+        _semesterId == semesterId) {
+      return;
+    }
+    await stopAllAndWait();
+    await _writeTail;
+    _contextVersion++;
+    _studentId = studentId;
+    _turnId = turnId;
+    _semesterId = semesterId;
+    _clearView();
+    await loadAutomationState();
+    _changed();
+  }
 
-  bool get isRobbing => _isRobbing;
-  List<Map<String, dynamic>> get robTargets => _robTargets;
-  DateTime? get scheduledStartTime => _scheduledStartTime;
-  Duration get robInterval => _robInterval;
-  Map<int, Map<String, dynamic>> get robTargetStatuses => _robTargetStatuses;
+  Future<void> clearSession() async {
+    await stopAllAndWait();
+    await _writeTail;
+    _contextVersion++;
+    _studentId = null;
+    _turnId = null;
+    _semesterId = null;
+    _clearView();
+    _changed();
+  }
 
-  bool get isMonitoring => _isMonitoring;
-  List<Map<String, dynamic>> get monitorTargets => _monitorTargets;
-  Duration get monitorInterval => _monitorInterval;
-  Map<int, Map<String, dynamic>> get monitorTargetStatuses =>
-      _monitorTargetStatuses;
-
-  void setPollingConfig(PollingConfig config) {
-    _pollingConfig = config.normalized();
-    unawaitedSaveAutomationState();
-    notifyListeners();
+  void _clearView() {
+    _courses = [];
+    _selectedCourses = [];
+    _queryCondition = null;
+    _courseCountInfo = {};
+    _filterConditions = null;
+    _robTargets.clear();
+    _monitorTargets.clear();
+    _robStates.clear();
+    _monitorStates.clear();
+    _scheduledStartTime = null;
+    _errorMessage = null;
+    _selectedError = null;
+    _automationError = null;
+    _isLoading = false;
+    _currentPage = 1;
+    _totalPages = 1;
+    _totalRows = 0;
   }
 
   Future<void> loadAutomationState() async {
+    final key = _stateKey;
+    if (key == null) return;
+    final epoch = _contextVersion;
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_automationStateKey);
-    if (raw == null) return;
-
-    try {
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      _pollingConfig = PollingConfig.fromJson(
-        data['pollingConfig'] as Map<String, dynamic>?,
-      );
-      _robInterval = Duration(
+    final raw = prefs.getString(key);
+    if (raw == null || epoch != _contextVersion) return;
+    final data = jsonDecode(raw) as Map<String, dynamic>;
+    _pollingConfig =
+        PollingConfig.fromJson(data['pollingConfig'] as Map<String, dynamic>?);
+    _robInterval = Duration(
+        milliseconds: boundedInt(data['robIntervalMs'], '抢课间隔', 200, 60000));
+    _monitorInterval = Duration(
         milliseconds:
-            _durationMs(data['robIntervalMs'], _robInterval.inMilliseconds),
-      );
-      _monitorInterval = Duration(
-        milliseconds: _durationMs(
-            data['monitorIntervalMs'], _monitorInterval.inMilliseconds),
-      );
-      _scheduledStartTime = data['scheduledStartTime'] == null
-          ? null
-          : DateTime.tryParse(data['scheduledStartTime'].toString());
-
-      _robTargets
-        ..clear()
-        ..addAll(_decodeTargets(data['robTargets']));
-      _monitorTargets
-        ..clear()
-        ..addAll(_decodeTargets(data['monitorTargets']));
-      _rebuildTargetStatuses();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('加载自动化状态失败: $e');
+            boundedInt(data['monitorIntervalMs'], '监控间隔', 200, 60000));
+    _scheduledStartTime = data['scheduledStartTime'] == null
+        ? null
+        : DateTime.parse(data['scheduledStartTime'] as String);
+    _robTargets.addAll((data['robTargets'] as List)
+        .map((v) => Map<String, dynamic>.from(v as Map)));
+    _monitorTargets.addAll((data['monitorTargets'] as List)
+        .map((v) => Map<String, dynamic>.from(v as Map)));
+    for (final raw in data['robStates'] as List) {
+      final state = TaskUpdate.fromJson(Map<String, dynamic>.from(raw as Map));
+      _robStates[state.lessonId] = state;
     }
+    _filterConditions = data['filters'] == null
+        ? null
+        : Map<String, dynamic>.from(data['filters'] as Map);
+    _changed();
   }
 
-  Future<void> saveAutomationState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _automationStateKey,
-      jsonEncode({
-        'pollingConfig': _pollingConfig.toJson(),
-        'robIntervalMs': _robInterval.inMilliseconds,
-        'monitorIntervalMs': _monitorInterval.inMilliseconds,
-        'scheduledStartTime': _scheduledStartTime?.toIso8601String(),
-        'robTargets': _robTargets,
-        'monitorTargets': _monitorTargets,
-      }),
-    );
+  Future<void> saveAutomationState() {
+    final key = _stateKey;
+    if (key == null) return Future.value();
+    final raw = jsonEncode({
+      'pollingConfig': _pollingConfig.toJson(),
+      'robIntervalMs': _robInterval.inMilliseconds,
+      'monitorIntervalMs': _monitorInterval.inMilliseconds,
+      'scheduledStartTime': _scheduledStartTime?.toUtc().toIso8601String(),
+      'robTargets': _robTargets,
+      'monitorTargets': _monitorTargets,
+      'robStates': _robStates.values.map((v) => v.toJson()).toList(),
+      'filters': _filterConditions,
+    });
+    final write = _writeTail.then((_) async {
+      final prefs = await SharedPreferences.getInstance();
+      if (!await prefs.setString(key, raw)) throw StateError('保存任务状态失败');
+    });
+    _writeTail = write.catchError((Object e) {
+      _automationError = '保存失败，已停止任务: $e';
+      stopRob();
+      stopMonitoring();
+      _changed();
+    });
+    return write;
+  }
+
+  void _save() {
+    unawaited(saveAutomationState().catchError((Object e) {
+      _automationError = '保存任务失败: $e';
+      _changed();
+    }));
   }
 
   Future<void> clearAutomationTargets() async {
+    await stopAllAndWait();
+    if (hasUncertainActions) throw StateError('存在未确认提交，请先核对结果');
     _robTargets.clear();
     _monitorTargets.clear();
-    _robTargetStatuses.clear();
-    _monitorTargetStatuses.clear();
-    _isRobbing = false;
-    _isMonitoring = false;
-    _robRunID++;
-    _monitorRunID++;
+    _robStates.clear();
+    _monitorStates.clear();
     await saveAutomationState();
-    notifyListeners();
+    _changed();
+  }
+
+  Future<void> reconcileActions() async {
+    if (_studentId == null || _turnId == null) return;
+    await stopAllAndWait();
+    final selected =
+        await _apiService.getSelectedLessons(_turnId!, _studentId!);
+    for (final entry in Map<int, TaskUpdate>.from(_robStates).entries) {
+      if (entry.value.phase != TaskPhase.submitting &&
+          entry.value.phase != TaskPhase.uncertain) {
+        continue;
+      }
+      if (selected.any((v) => v['id'] == entry.key) ==
+          (entry.value.action == 'add')) {
+        _robStates[entry.key] = TaskUpdate(
+            entry.key, TaskPhase.succeeded, '已核对操作成功',
+            action: entry.value.action);
+      }
+    }
+    _selectedCourses = selected;
+    await saveAutomationState();
+    _changed();
+  }
+
+  Future<void> acknowledgeUncertainActions() async {
+    await stopAllAndWait();
+    for (final entry in Map<int, TaskUpdate>.from(_robStates).entries) {
+      if (entry.value.phase == TaskPhase.submitting ||
+          entry.value.phase == TaskPhase.uncertain) {
+        _robStates[entry.key] = TaskUpdate(
+            entry.key, TaskPhase.cancelled, '用户已在官网核对，允许重新操作',
+            action: entry.value.action);
+      }
+    }
+    _automationError = null;
+    await saveAutomationState();
+    _changed();
   }
 
   Future<void> clearLogs() => _logService.clear();
-
   Future<String> readLogs() => _logService.readRecent();
-
-  void unawaitedSaveAutomationState() {
-    saveAutomationState().catchError((e) {
-      debugPrint('保存自动化状态失败: $e');
-    });
-  }
-
-  List<Map<String, dynamic>> _decodeTargets(dynamic value) {
-    if (value is! List) return [];
-    return value
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
-  }
-
-  void _rebuildTargetStatuses() {
-    _robTargetStatuses
-      ..clear()
-      ..addEntries(_robTargets.map(
-        (target) => MapEntry(_asInt(target['id']), _initialTargetStatus()),
-      ));
-    _monitorTargetStatuses
-      ..clear()
-      ..addEntries(_monitorTargets.map(
-        (target) => MapEntry(_asInt(target['id']), _initialTargetStatus()),
-      ));
-  }
-
-  int _durationMs(dynamic value, int fallback) {
-    final ms = _asInt(value);
-    return ms > 0 ? ms : fallback;
-  }
+  int getTotalVirtualCost() => _selectedCourses.fold(
+      0, (sum, c) => sum + ((c['virtualCost'] as num?)?.toInt() ?? 0));
 
   Future<void> loadQueryCondition(int turnID) async {
+    final epoch = _contextVersion;
     try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
-
-      _queryCondition = await _apiService.getQueryCondition(turnID);
-      await _loadFilterConditions();
+      final result = await _apiService.getQueryCondition(turnID);
+      if (epoch != _contextVersion) return;
+      _queryCondition = result;
+      _changed();
     } catch (e) {
-      _errorMessage = '加载筛选条件失败: $e';
-      debugPrint(_errorMessage);
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> _loadFilterConditions() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final filterJson = prefs.getString('filter_conditions');
-      if (filterJson != null) {
-        _filterConditions = Map<String, dynamic>.from(
-          Map.castFrom<dynamic, dynamic, String, dynamic>(
-            jsonDecode(filterJson) as Map,
-          ),
-        );
+      if (epoch == _contextVersion) {
+        _errorMessage = '加载筛选条件失败: $e';
+        _changed();
       }
-    } catch (e) {
-      debugPrint('加载筛选条件缓存失败: $e');
+      rethrow;
     }
   }
 
   Future<void> saveFilterConditions(Map<String, dynamic> conditions) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('filter_conditions', jsonEncode(conditions));
-      _filterConditions = Map<String, dynamic>.from(conditions);
-      notifyListeners();
-    } catch (e) {
-      debugPrint('保存筛选条件缓存失败: $e');
-    }
+    _filterConditions = Map.from(conditions);
+    await saveAutomationState();
+    _changed();
   }
 
   Future<void> clearFilterConditions() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('filter_conditions');
-      _filterConditions = null;
-      notifyListeners();
-    } catch (e) {
-      debugPrint('清除筛选条件缓存失败: $e');
-    }
+    _filterConditions = null;
+    await saveAutomationState();
+    _changed();
   }
 
-  Future<void> searchCourses({
-    required int studentID,
-    required int turnID,
-    required int semesterID,
-    String? courseName,
-    String? teacherName,
-    String? lessonName,
-    String? campusId,
-    String? courseTypeId,
-    String? coursePropertyId,
-    String? departmentId,
-    String? majorId,
-    String? grade,
-    String? week,
-    String? creditGte,
-    String? creditLte,
-    bool onlyAvailable = false,
-    bool onlyWithCount = false,
-    String sortField = 'lesson',
-    String sortType = 'ASC',
-    int pageNo = 1,
-    int pageSize = 20,
-  }) async {
+  Future<void> searchCourses(
+      {required int studentID,
+      required int turnID,
+      required int semesterID,
+      String? courseName,
+      String? teacherName,
+      String? lessonName,
+      String? campusId,
+      String? courseTypeId,
+      String? coursePropertyId,
+      String? departmentId,
+      String? majorId,
+      String? grade,
+      String? week,
+      String? creditGte,
+      String? creditLte,
+      bool onlyAvailable = false,
+      bool onlyWithCount = false,
+      String sortField = 'lesson',
+      String sortType = 'ASC',
+      int pageNo = 1,
+      int pageSize = 20}) async {
+    final epoch = _contextVersion, search = ++_searchVersion;
+    _isLoading = true;
+    _errorMessage = null;
+    _changed();
     try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
-
       final result = await _apiService.queryLessons(
-        studentID: studentID,
-        turnID: turnID,
-        semesterID: semesterID,
-        courseNameOrCode: courseName ?? '',
-        lessonNameOrCode: lessonName ?? '',
-        teacherNameOrCode: teacherName ?? '',
-        campusId: campusId ?? '',
-        courseTypeId: courseTypeId ?? '',
-        coursePropertyId: coursePropertyId ?? '',
-        departmentId: departmentId ?? '',
-        majorId: majorId ?? '',
-        grade: grade ?? '',
-        week: week ?? '',
-        creditGte: creditGte,
-        creditLte: creditLte,
-        canSelect: onlyAvailable ? 1 : null,
-        hasCount: onlyWithCount ? true : null,
-        sortField: sortField,
-        sortType: sortType,
-        pageNo: pageNo,
-        pageSize: pageSize,
-      );
-
-      final lessonsList = result['lessons'] as List<dynamic>;
-      _courses = List<Map<String, dynamic>>.from(
-        lessonsList.map((item) => item as Map<String, dynamic>),
-      );
-      final pageInfo = result['pageInfo'] as Map<String, dynamic>;
-      _currentPage = pageInfo['currentPage'] as int;
-      _totalPages = pageInfo['totalPages'] as int;
-      _totalRows = pageInfo['totalRows'] as int;
-
-      // 批量获取课程名额信息
-      if (_courses.isNotEmpty) {
-        final lessonIds =
-            _courses.map((course) => course['id'] as int).toList();
-        _courseCountInfo = await getBatchCountInfo(lessonIds);
-      } else {
-        _courseCountInfo = {};
-      }
+          studentID: studentID,
+          turnID: turnID,
+          semesterID: semesterID,
+          courseNameOrCode: courseName ?? '',
+          teacherNameOrCode: teacherName ?? '',
+          lessonNameOrCode: lessonName ?? '',
+          campusId: campusId ?? '',
+          courseTypeId: courseTypeId ?? '',
+          coursePropertyId: coursePropertyId ?? '',
+          departmentId: departmentId ?? '',
+          majorId: majorId ?? '',
+          grade: grade ?? '',
+          week: week ?? '',
+          creditGte: creditGte,
+          creditLte: creditLte,
+          canSelect: onlyAvailable ? 1 : null,
+          hasCount: onlyWithCount ? true : null,
+          sortField: sortField,
+          sortType: sortType,
+          pageNo: pageNo,
+          pageSize: pageSize);
+      final courses = (result['lessons'] as List)
+          .map((v) => Map<String, dynamic>.from(v as Map))
+          .toList();
+      final counts = courses.isEmpty
+          ? <String, Map<String, dynamic>>{}
+          : await getBatchCountInfo(
+              courses.map((v) => v['id'] as int).toList());
+      if (epoch != _contextVersion || search != _searchVersion) return;
+      _courses = courses;
+      _courseCountInfo = counts;
+      final page = result['pageInfo'] as Map;
+      _currentPage = page['currentPage'] as int;
+      _totalPages = page['totalPages'] as int;
+      _totalRows = page['totalRows'] as int;
     } catch (e) {
-      _errorMessage = '搜索课程失败: $e';
-      debugPrint(_errorMessage);
-      _courses = [];
+      if (epoch == _contextVersion && search == _searchVersion) {
+        _errorMessage = '搜索失败: $e';
+      }
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (epoch == _contextVersion && search == _searchVersion) {
+        _isLoading = false;
+        _changed();
+      }
     }
   }
 
   Future<void> loadSelectedCourses(int turnID, int studentID) async {
+    final epoch = _contextVersion;
+    _selectedError = null;
     try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
-
-      _selectedCourses =
-          await _apiService.getSelectedLessons(turnID, studentID);
+      final result = await _apiService.getSelectedLessons(turnID, studentID);
+      if (epoch != _contextVersion) return;
+      _selectedCourses = result;
     } catch (e) {
-      _errorMessage = '加载已选课程失败: $e';
-      debugPrint(_errorMessage);
-      _selectedCourses = [];
+      if (epoch == _contextVersion) _selectedError = '加载已选课程失败: $e';
+      rethrow;
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (epoch == _contextVersion) _changed();
     }
   }
 
   Future<bool> addCourse(
-      int studentID, int turnID, int lessonID, int virtualCost) async {
-    try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
+          int studentID, int turnID, int lessonID, int virtualCost) =>
+      _manualAction(true, studentID, turnID, lessonID, virtualCost);
+  Future<bool> dropCourse(int studentID, int turnID, int lessonID) =>
+      _manualAction(false, studentID, turnID, lessonID, 0);
 
-      final result = await _apiService.addCourse(
-        studentID,
-        turnID,
-        lessonID,
-        virtualCost,
-        polling: _pollingConfig,
-      );
-      if (!result.success) {
-        _errorMessage = result.message;
-        await _logCourseAction('addCourse', result);
-        return false;
-      }
-      await _logCourseAction('addCourse', result);
-
-      // 刷新已选课程
-      await loadSelectedCourses(turnID, studentID);
-
-      // 更新新添加课程的virtualCost（API可能不返回此字段）
-      final addedCourse = _selectedCourses.firstWhere(
-        (course) => course['id'] == lessonID,
-        orElse: () => <String, dynamic>{},
-      );
-      if (addedCourse.isNotEmpty) {
-        addedCourse['virtualCost'] = virtualCost;
-      }
-
-      return true;
-    } catch (e) {
-      _errorMessage = '选课失败: $e';
-      debugPrint(_errorMessage);
+  Future<bool> _manualAction(
+      bool add, int student, int turn, int lesson, int cost) async {
+    if (_isActing || isRobbing || hasUncertainActions) {
+      _errorMessage = '请先停止抢课并核对未完成的操作';
+      _changed();
       return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
     }
-  }
-
-  Future<bool> dropCourse(int studentID, int turnID, int lessonID) async {
-    try {
-      _isLoading = true;
-      _errorMessage = null;
-      notifyListeners();
-
-      final result = await _apiService.dropCourse(
-        studentID,
-        turnID,
-        lessonID,
-        polling: _pollingConfig,
-      );
-      if (!result.success) {
-        _errorMessage = result.message;
-        await _logCourseAction('dropCourse', result);
-        return false;
-      }
-      await _logCourseAction('dropCourse', result);
-
-      // 刷新已选课程
-      await loadSelectedCourses(turnID, studentID);
-
-      return true;
-    } catch (e) {
-      _errorMessage = '退课失败: $e';
-      debugPrint(_errorMessage);
+    if (student != _studentId || turn != _turnId) {
+      _errorMessage = '当前学生或轮次已改变，请重新打开课程';
+      _changed();
       return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
     }
-  }
-
-  Future<Map<String, dynamic>?> getCountInfo(int lessonID) async {
+    final done = Completer<void>();
+    _actionFuture = done.future;
+    _isActing = true;
+    _errorMessage = null;
+    final token = _manualCancellation = CancellationToken();
+    ExecutionLease? lease;
+    CourseActionResult? outcome;
+    _changed();
     try {
-      return await _apiService.getCountInfo(lessonID);
-    } catch (e) {
-      debugPrint('获取课程名额失败: $e');
-      return null;
-    }
-  }
-
-  Future<void> _logCourseAction(String event, CourseActionResult result) {
-    return _logService.write(
-      event,
-      result.message,
-      data: {
-        'success': result.success,
+      lease = await ExecutionLease.acquire(student);
+      _robStates[lesson] = TaskUpdate(
+          lesson, TaskPhase.submitting, add ? '手动选课处理中' : '手动退课处理中',
+          action: add ? 'add' : 'drop');
+      await saveAutomationState();
+      final result = add
+          ? await _apiService.addCourse(student, turn, lesson, cost,
+              polling: _pollingConfig, cancellation: token)
+          : await _apiService.dropCourse(student, turn, lesson,
+              polling: _pollingConfig, cancellation: token);
+      outcome = result;
+      _robStates[lesson] = TaskUpdate(
+          lesson,
+          result.success
+              ? TaskPhase.succeeded
+              : result.outcome == ActionOutcome.uncertain
+                  ? TaskPhase.uncertain
+                  : TaskPhase.failed,
+          result.message,
+          attempts: result.attempts,
+          requestId: result.requestId,
+          action: add ? 'add' : 'drop');
+      await saveAutomationState();
+      await _logService
+          .write(add ? 'addCourse' : 'dropCourse', result.message, data: {
+        'lessonId': lesson,
+        'outcome': result.outcome.name,
         'requestId': result.requestId,
-        'attempts': result.attempts,
-        'elapsedMs': result.elapsedMs,
-      },
-    );
-  }
-
-  Future<Map<String, Map<String, dynamic>>> getBatchCountInfo(
-      List<int> lessonIDs) async {
-    try {
-      final batchData = await _apiService.getBatchCountInfo(lessonIDs);
-      final result = <String, Map<String, dynamic>>{};
-
-      for (final entry in batchData.entries) {
-        final lessonId = entry.key;
-        final countString = entry.value;
-        // 解析格式: "总选课人数-预选人数-预跨选人数-跨选人数"
-        final parts = countString.split('-');
-        if (parts.length >= 4) {
-          final totalSelected = int.tryParse(parts[0]) ?? 0;
-          final preSelected = int.tryParse(parts[1]) ?? 0;
-          final preCrossSelected = int.tryParse(parts[2]) ?? 0;
-          final crossSelected = int.tryParse(parts[3]) ?? 0;
-          final regularSelected = totalSelected - crossSelected;
-
-          result[lessonId] = {
-            'stdCount': regularSelected, // 正选人数
-            'amStdCount': crossSelected, // 跨选人数
-            'preStdCount': preSelected, // 预选人数
-            'preAmStdCount': preCrossSelected, // 预跨选人数
-            'totalSelected': totalSelected, // 总选课人数
-          };
-        }
+        'attempts': result.attempts
+      });
+      if (!result.success) {
+        _errorMessage = result.message;
+        return false;
       }
-
-      return result;
+      _selectedCourses = result.selectedLessons;
+      _selectedError = null;
+      return true;
     } catch (e) {
-      debugPrint('批量获取课程名额失败: $e');
-      return {};
+      if (outcome?.success == true) {
+        _automationError = '选退课已成功，但本地记录失败: $e';
+        _changed();
+        return true;
+      }
+      _errorMessage = e.toString();
+      return false;
+    } finally {
+      try {
+        await lease?.release();
+      } catch (e) {
+        _automationError = '释放运行锁失败: $e';
+      }
+      _isActing = false;
+      _manualCancellation = null;
+      _actionFuture = null;
+      done.complete();
+      _changed();
     }
   }
 
-  int _asInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  int _regularLimit(
-      Map<String, dynamic> course, Map<String, dynamic> countInfo) {
-    final countLimit = countInfo['limitCount'];
-    return _asInt(countLimit ?? course['limitCount']);
-  }
-
-  int _acrossMajorLimit(
-      Map<String, dynamic> course, Map<String, dynamic> countInfo) {
-    final countLimit = countInfo['amLimitCount'] ??
-        countInfo['acrossMajorLimitCount'] ??
-        course['acrossMajorLimitCount'];
-    return _asInt(countLimit);
-  }
-
-  int _availableSeats(
-      Map<String, dynamic> course, Map<String, dynamic>? countInfo) {
-    if (countInfo == null) return 0;
-
-    final regularAvailable =
-        _regularLimit(course, countInfo) - _asInt(countInfo['stdCount']);
-    final acrossMajorAvailable =
-        _acrossMajorLimit(course, countInfo) - _asInt(countInfo['amStdCount']);
-
-    return (regularAvailable > 0 ? regularAvailable : 0) +
-        (acrossMajorAvailable > 0 ? acrossMajorAvailable : 0);
-  }
-
-  @visibleForTesting
-  int availableSeatsForTesting(
-    Map<String, dynamic> course,
-    Map<String, dynamic>? countInfo,
-  ) =>
-      _availableSeats(course, countInfo);
-
-  Map<String, dynamic> _initialTargetStatus() => {
-        'available': 0,
-        'limitCount': 0,
-        'stdCount': 0,
-        'amStdCount': 0,
-        'lastChecked': null,
-        'status': '未监控',
-        'attemptCount': 0,
-        'lastError': null,
-        'lastRequestId': null,
-        'successTime': null,
-      };
-
-  Map<String, dynamic> _statusFromCountInfo(
-    Map<String, dynamic> course,
-    Map<String, dynamic> countInfo,
-  ) {
-    final regularLimit = _regularLimit(course, countInfo);
-    final acrossMajorLimit = _acrossMajorLimit(course, countInfo);
-    final available = _availableSeats(course, countInfo);
-
+  Future<Map<String, dynamic>> getCountInfo(int lessonID) =>
+      _apiService.getCountInfo(lessonID);
+  Future<Map<String, Map<String, dynamic>>> getBatchCountInfo(
+      List<int> ids) async {
+    final raw = await _apiService.getBatchCountInfo(ids);
     return {
-      'available': available,
-      'limitCount': regularLimit + acrossMajorLimit,
-      'stdCount': _asInt(countInfo['stdCount']),
-      'amStdCount': _asInt(countInfo['amStdCount']),
-      'lastChecked': DateTime.now(),
-      'status': available > 0 ? '有余量' : '无余量',
+      for (final entry in raw.entries) entry.key: parseCountInfo(entry.value)
     };
   }
 
-  void addRobTarget(Map<String, dynamic> course, {int virtualCost = 0}) async {
-    if (!_robTargets.any((target) => target['id'] == course['id'])) {
-      _robTargets.add({
-        ...course, // 保留完整的course对象
-        'priority': _robTargets.length + 1,
-        'virtualCost': virtualCost,
-        'attemptCount': 0,
-        'lastError': null,
-        'lastRequestId': null,
-        'successTime': null,
-      });
-      // 初始化监控状态
-      _robTargetStatuses[course['id']] = _initialTargetStatus();
-      notifyListeners();
-
-      // 获取名额信息
-      try {
-        final countInfo = await getCountInfo(course['id']);
-        if (countInfo != null) {
-          if (!_robTargets.any((target) => target['id'] == course['id'])) {
-            return;
-          }
-          _robTargetStatuses[course['id']] =
-              _statusFromCountInfo(course, countInfo);
-        }
-      } catch (e) {
-        debugPrint('获取抢课目标名额信息失败: $e');
-      }
-      unawaitedSaveAutomationState();
-      notifyListeners();
+  @visibleForTesting
+  static Map<String, dynamic> parseCountInfo(String value) {
+    final parts = value.split('-');
+    if (parts.length != 4) throw const FormatException('课程人数格式异常');
+    final n = parts.map(int.parse).toList();
+    if (n.any((v) => v < 0) || n[0] < n[3]) {
+      throw const FormatException('课程人数不一致');
     }
+    return {
+      'stdCount': n[0] - n[3],
+      'amStdCount': n[3],
+      'preStdCount': n[1],
+      'preAmStdCount': n[2],
+      'totalSelected': n[0]
+    };
   }
 
-  void removeRobTarget(int lessonID) {
-    _robTargets.removeWhere((target) => target['id'] == lessonID);
-    _robTargetStatuses.remove(lessonID);
-    if (_robTargets.isEmpty && _isRobbing) {
-      _isRobbing = false;
-      _robRunID++;
-    }
-    unawaitedSaveAutomationState();
-    notifyListeners();
+  void setPollingConfig(PollingConfig config) {
+    _pollingConfig = config.normalized();
+    _save();
+    _changed();
   }
 
-  // 监控相关方法
-  void addMonitorTarget(Map<String, dynamic> course,
-      {int virtualCost = 0}) async {
-    if (!_monitorTargets.any((target) => target['id'] == course['id'])) {
-      _monitorTargets.add({
-        ...course, // 保留完整的course对象
-        'priority': _monitorTargets.length + 1,
-        'virtualCost': virtualCost,
-        'attemptCount': 0,
-        'lastError': null,
-        'lastRequestId': null,
-        'successTime': null,
-      });
-      // 初始化监控状态
-      _monitorTargetStatuses[course['id']] = _initialTargetStatus();
-      notifyListeners();
-
-      // 获取名额信息
-      try {
-        final countInfo = await getCountInfo(course['id']);
-        if (countInfo != null) {
-          if (!_monitorTargets.any((target) => target['id'] == course['id'])) {
-            return;
-          }
-          _monitorTargetStatuses[course['id']] =
-              _statusFromCountInfo(course, countInfo);
-        }
-      } catch (e) {
-        debugPrint('获取监控目标名额信息失败: $e');
-      }
-      unawaitedSaveAutomationState();
-      notifyListeners();
-    }
+  void setRobInterval(Duration value) {
+    _robInterval = _interval(value);
+    _save();
+    _changed();
   }
 
-  void removeMonitorTarget(int lessonID) {
-    _monitorTargets.removeWhere((target) => target['id'] == lessonID);
-    _monitorTargetStatuses.remove(lessonID);
-    if (_monitorTargets.isEmpty && _isMonitoring) {
-      _isMonitoring = false;
-      _monitorRunID++;
-    }
-    unawaitedSaveAutomationState();
-    notifyListeners();
+  void setMonitorInterval(Duration value) {
+    _monitorInterval = _interval(value);
+    _save();
+    _changed();
   }
 
-  void setMonitorInterval(Duration interval) {
-    _monitorInterval = interval < const Duration(milliseconds: 200)
-        ? const Duration(milliseconds: 200)
-        : interval;
-    unawaitedSaveAutomationState();
-    notifyListeners();
-  }
-
-  Future<void> startMonitoring(int studentID, int turnID) async {
-    if (_isMonitoring || _monitorTargets.isEmpty) return;
-
-    _isMonitoring = true;
-    final runID = ++_monitorRunID;
-    notifyListeners();
-
-    while (
-        _isMonitoring && runID == _monitorRunID && _monitorTargets.isNotEmpty) {
-      for (var target in List.from(_monitorTargets)) {
-        if (!_isMonitoring || runID != _monitorRunID) return;
-
-        final countInfo = await getCountInfo(target['id']);
-        if (countInfo != null) {
-          final status = _statusFromCountInfo(target, countInfo);
-          final available = status['available'] as int;
-
-          // 更新监控状态
-          _monitorTargetStatuses[target['id']] = status;
-          notifyListeners();
-
-          // 如果有余量，发送通知并自动抢课
-          if (available > 0) {
-            await NotificationService.showCourseAvailableNotification(
-              target['course']?['nameZh'] ??
-                  target['course']?['nameEn'] ??
-                  '未知课程',
-              available,
-              status['limitCount'],
-            );
-            final success =
-                await _tryAddTargetCourse(studentID, turnID, target);
-            if (success) {
-              removeMonitorTarget(target['id']);
-            }
-          }
-        } else {
-          // 获取失败时更新状态
-          _monitorTargetStatuses[target['id']] = {
-            'available': 0,
-            'limitCount': 0,
-            'stdCount': 0,
-            'amStdCount': 0,
-            'lastChecked': DateTime.now(),
-            'status': '获取失败',
-          };
-          notifyListeners();
-        }
-      }
-
-      if (_isMonitoring &&
-          runID == _monitorRunID &&
-          _monitorTargets.isNotEmpty) {
-        await Future.delayed(_monitorInterval);
-      }
-    }
-
-    if (_isMonitoring && runID == _monitorRunID && _monitorTargets.isEmpty) {
-      _isMonitoring = false;
-      notifyListeners();
-    }
-  }
-
-  void stopMonitoring() {
-    _isMonitoring = false;
-    _monitorRunID++;
-    // 停止时重置监控状态
-    for (var target in _monitorTargets) {
-      _monitorTargetStatuses[target['id']] = _initialTargetStatus();
-    }
-    notifyListeners();
-  }
-
+  Duration _interval(Duration value) =>
+      Duration(milliseconds: value.inMilliseconds.clamp(200, 60000));
   void setScheduledStartTime(DateTime? time) {
     _scheduledStartTime = time;
-    unawaitedSaveAutomationState();
-    notifyListeners();
+    _save();
+    _changed();
   }
 
-  void setRobInterval(Duration interval) {
-    _robInterval = interval < const Duration(milliseconds: 200)
-        ? const Duration(milliseconds: 200)
-        : interval;
-    unawaitedSaveAutomationState();
-    notifyListeners();
+  void addRobTarget(Map<String, dynamic> course, {int virtualCost = 0}) =>
+      _addTarget(_robTargets, course, virtualCost);
+  void addMonitorTarget(Map<String, dynamic> course, {int virtualCost = 0}) =>
+      _addTarget(_monitorTargets, course, virtualCost);
+  void _addTarget(List<Map<String, dynamic>> targets,
+      Map<String, dynamic> course, int cost) {
+    if (_stateKey == null) throw StateError('请先选择轮次');
+    if (targets.length >= 100) throw StateError('最多支持 100 门目标课程');
+    if (isRobbing || isMonitoring) throw StateError('请先停止自动任务再添加目标');
+    if (targets.any((v) => v['id'] == course['id'])) return;
+    targets
+        .add({...course, 'virtualCost': cost, 'priority': targets.length + 1});
+    _save();
+    _changed();
+  }
+
+  void removeRobTarget(int id) {
+    final phase = _robStates[id]?.phase;
+    if (phase == TaskPhase.submitting || phase == TaskPhase.uncertain) {
+      _automationError = '此课程存在未确认操作，请先停止并核对';
+      _changed();
+      return;
+    }
+    _robRunner?.removeTarget(id);
+    _robTargets.removeWhere((t) => t['id'] == id);
+    _robStates.remove(id);
+    _save();
+    _changed();
+  }
+
+  void removeMonitorTarget(int id) {
+    _monitorRunner?.removeTarget(id);
+    _monitorTargets.removeWhere((t) => t['id'] == id);
+    _monitorStates.remove(id);
+    _save();
+    _changed();
+  }
+
+  void moveRobTarget(int index, int delta) {
+    if (isRobbing || index + delta < 0 || index + delta >= _robTargets.length) {
+      return;
+    }
+    final target = _robTargets.removeAt(index);
+    _robTargets.insert(index + delta, target);
+    for (var i = 0; i < _robTargets.length; i++) {
+      _robTargets[i]['priority'] = i + 1;
+    }
+    _save();
+    _changed();
+  }
+
+  Future<AutomationConfig> buildRobConfig() =>
+      _config(_robTargets, _robInterval, _scheduledStartTime);
+  Future<AutomationConfig> _config(List<Map<String, dynamic>> targets,
+      Duration interval, DateTime? start) async {
+    final epoch = _contextVersion;
+    final token = await _apiService.getAuthorization();
+    if (epoch != _contextVersion) throw StateError('学生或轮次已改变');
+    if (_studentId == null || _turnId == null || _semesterId == null) {
+      throw StateError('请先选择轮次');
+    }
+    final config = AutomationConfig(
+        token: token,
+        studentId: _studentId!,
+        turnId: _turnId!,
+        semesterId: _semesterId!,
+        interval: interval,
+        polling: _pollingConfig,
+        startAt: start,
+        targets: targets
+            .map((t) => AutomationTarget(
+                lessonId: t['id'] as int,
+                name: (t['course']?['nameZh'] ??
+                        t['course']?['nameEn'] ??
+                        t['code'])
+                    .toString(),
+                virtualCost: t['virtualCost'] as int))
+            .toList());
+    config.validate();
+    return config;
   }
 
   Future<void> startRob(int studentID, int turnID) async {
-    if (_isRobbing || _robTargets.isEmpty) return;
-
-    _isRobbing = true;
-    final runID = ++_robRunID;
-    notifyListeners();
-
-    // 如果设置了定时开始时间，等待到指定时间
-    if (_scheduledStartTime != null) {
-      final now = DateTime.now();
-      if (_scheduledStartTime!.isAfter(now)) {
-        final delay = _scheduledStartTime!.difference(now);
-        await Future.delayed(delay);
-      }
-    }
-
-    if (!_isRobbing || runID != _robRunID) return;
-
-    while (_isRobbing && runID == _robRunID && _robTargets.isNotEmpty) {
-      for (var target in List.from(_robTargets)) {
-        if (!_isRobbing || runID != _robRunID) return;
-
-        final countInfo = await getCountInfo(target['id']);
-        if (countInfo != null) {
-          final status = _statusFromCountInfo(target, countInfo);
-          _robTargetStatuses[target['id']] = status;
-          notifyListeners();
-
-          final available = status['available'] as int;
-          if (available > 0) {
-            final success =
-                await _tryAddTargetCourse(studentID, turnID, target);
-            if (success) {
-              removeRobTarget(target['id']);
-            }
-          }
-        } else {
-          _robTargetStatuses[target['id']] = {
-            'available': 0,
-            'limitCount': 0,
-            'stdCount': 0,
-            'amStdCount': 0,
-            'lastChecked': DateTime.now(),
-            'status': '获取失败',
-          };
-          notifyListeners();
-        }
-      }
-
-      if (_isRobbing && runID == _robRunID && _robTargets.isNotEmpty) {
-        await Future.delayed(_robInterval);
-      }
-    }
-
-    if (_isRobbing && runID == _robRunID && _robTargets.isEmpty) {
-      _isRobbing = false;
-      notifyListeners();
-    }
+    if (isRobbing || _isActing) return;
+    final run = _run(false, studentID, turnID);
+    _robFuture = run;
+    await run;
   }
 
-  Future<bool> _tryAddTargetCourse(
-    int studentID,
-    int turnID,
-    Map<String, dynamic> target,
-  ) async {
-    target['attemptCount'] = _asInt(target['attemptCount']) + 1;
-    final success = await addCourse(
-      studentID,
-      turnID,
-      target['id'],
-      _asInt(target['virtualCost']),
-    );
-    if (success) {
-      target['successTime'] = DateTime.now().toIso8601String();
-      target['lastError'] = null;
+  Future<void> startMonitoring(int studentID, int turnID) async {
+    if (isMonitoring) return;
+    final run = _run(true, studentID, turnID);
+    _monitorFuture = run;
+    await run;
+  }
+
+  Future<void> _run(bool monitor, int student, int turn) async {
+    final startup = CancellationToken();
+    if (monitor) {
+      _monitorStartup = startup;
     } else {
-      target['lastError'] = _errorMessage;
+      _robStartup = startup;
     }
-    unawaitedSaveAutomationState();
-    return success;
+    ExecutionLease? lease;
+    AutomationRunner? runner;
+    final epoch = _contextVersion;
+    try {
+      if (student != _studentId || turn != _turnId) {
+        throw StateError('学生或轮次已改变');
+      }
+      if (!monitor && hasUncertainActions) throw StateError('存在未确认提交，请先核对结果');
+      final config = monitor
+          ? await _config(_monitorTargets, _monitorInterval, null)
+          : await buildRobConfig();
+      if (startup.isCancelled) return;
+      final states = monitor ? _monitorStates : _robStates;
+      _automationError = null;
+      runner = AutomationRunner(
+          api: _apiService,
+          config: config,
+          initialStates: states,
+          monitorOnly: monitor,
+          onUpdate: (update) async {
+            if (_disposed || epoch != _contextVersion) return;
+            final previous = states[update.lessonId];
+            states[update.lessonId] = update;
+            if (update.selectedLessons != null) {
+              _selectedCourses = update.selectedLessons!;
+              _selectedError = null;
+            }
+            _changed();
+            if (!monitor &&
+                (previous?.phase != update.phase ||
+                    previous?.attempts != update.attempts ||
+                    previous?.requestId != update.requestId)) {
+              await saveAutomationState();
+            }
+            if (update.phase == TaskPhase.submitting ||
+                update.phase == TaskPhase.failed ||
+                update.phase == TaskPhase.uncertain ||
+                update.phase == TaskPhase.succeeded) {
+              await _logService.write('automation', update.message,
+                  data: update.toJson());
+            }
+            if (update.phase == TaskPhase.succeeded ||
+                update.phase == TaskPhase.available) {
+              final name = config.targets
+                  .firstWhere((t) => t.lessonId == update.lessonId)
+                  .name;
+              try {
+                await NotificationService.showNotification(
+                    title:
+                        update.phase == TaskPhase.succeeded ? '选课成功' : '课程余量提醒',
+                    body: '$name：${update.message}',
+                    id: update.lessonId);
+              } catch (e) {
+                _notificationWarning = '系统通知不可用: $e';
+                _changed();
+              }
+            }
+          });
+      if (monitor) {
+        _monitorRunner = runner;
+      } else {
+        _robRunner = runner;
+      }
+      _changed();
+      try {
+        await NotificationService.requestPermission();
+      } catch (e) {
+        _notificationWarning = e.toString();
+        _changed();
+      }
+      if (!monitor) lease = await ExecutionLease.acquire(student);
+      await runner.run();
+    } catch (e) {
+      if (!_disposed && epoch == _contextVersion) {
+        _automationError = '任务已停止: $e';
+      }
+    } finally {
+      try {
+        await lease?.release();
+      } catch (e) {
+        _automationError = '释放运行锁失败: $e';
+      }
+      if (monitor) {
+        _monitorStartup = null;
+        _monitorRunner = null;
+      } else {
+        _robStartup = null;
+        _robRunner = null;
+      }
+      _changed();
+    }
   }
 
   void stopRob() {
-    _isRobbing = false;
-    _robRunID++;
-    notifyListeners();
+    _robStartup?.cancel();
+    _robRunner?.stop();
+    _changed();
+  }
+
+  void stopMonitoring() {
+    _monitorStartup?.cancel();
+    _monitorRunner?.stop();
+    _changed();
+  }
+
+  Future<void> stopAllAndWait() async {
+    stopRob();
+    stopMonitoring();
+    _manualCancellation?.cancel();
+    await Future.wait([
+      if (_robFuture != null) _robFuture!,
+      if (_monitorFuture != null) _monitorFuture!,
+      if (_actionFuture != null) _actionFuture!
+    ]);
   }
 
   @override
   void dispose() {
-    _robRunID++;
-    _monitorRunID++;
+    _disposed = true;
+    _robStartup?.cancel();
+    _monitorStartup?.cancel();
+    _robRunner?.stop();
+    _monitorRunner?.stop();
+    _manualCancellation?.cancel();
     super.dispose();
   }
 }

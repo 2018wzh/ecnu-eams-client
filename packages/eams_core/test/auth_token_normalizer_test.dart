@@ -1,5 +1,5 @@
-import 'package:ecnu_eams_client/services/auth_token_normalizer.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:eams_core/eams_core.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('AuthTokenNormalizer', () {

@@ -218,55 +218,34 @@ class CourseCard extends StatelessWidget {
                 ),
               ],
 
-              // 状态信息（监控状态）
               if (status != null && status!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: (status!['available'] ?? 0) > 0
+                    color: status!['phase'] == 'succeeded'
                         ? Colors.green.shade50
-                        : Colors.red.shade50,
+                        : status!['phase'] == 'uncertain' ||
+                                status!['phase'] == 'failed'
+                            ? Colors.orange.shade50
+                            : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: (status!['available'] ?? 0) > 0
-                          ? Colors.green.shade300
-                          : Colors.red.shade300,
-                    ),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '状态: ${status!['status'] ?? '未知'}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (status!['available'] ?? 0) > 0
-                              ? Colors.green.shade700
-                              : Colors.red.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '余量: ${status!['available'] ?? 0}/${status!['limitCount'] ?? 0} | 已选: ${status!['stdCount'] ?? 0}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: (status!['available'] ?? 0) > 0
-                              ? Colors.green.shade600
-                              : Colors.red.shade600,
-                        ),
-                      ),
-                      if (status!['lastChecked'] != null)
-                        Text(
-                          '最后检查: ${status!['lastChecked'].hour.toString().padLeft(2, '0')}:${status!['lastChecked'].minute.toString().padLeft(2, '0')}:${status!['lastChecked'].second.toString().padLeft(2, '0')}',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey,
-                          ),
-                        ),
-                    ],
-                  ),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${status!['status']}',
+                            style: const TextStyle(fontSize: 12)),
+                        Text('尝试 ${status!['attemptCount'] ?? 0} 次',
+                            style: const TextStyle(fontSize: 12)),
+                        if (status!['lastRequestId'] != null)
+                          SelectableText('请求: ${status!['lastRequestId']}',
+                              style: const TextStyle(fontSize: 11)),
+                        if (status!['lastChecked'] != null)
+                          Text('更新: ${status!['lastChecked'].toLocal()}',
+                              style: const TextStyle(fontSize: 11)),
+                      ]),
                 ),
               ],
 
@@ -373,7 +352,7 @@ class CourseCard extends StatelessWidget {
   String _getRegularCountText() {
     final limitCount = course['limitCount'] as int? ?? 0;
     if (countInfo == null) {
-      return limitCount > 0 ? '$limitCount人' : '无';
+      return '人数未知';
     }
 
     final stdCount = countInfo!['stdCount'] as int? ?? 0;
@@ -384,7 +363,7 @@ class CourseCard extends StatelessWidget {
   String _getAcrossMajorCountText() {
     final acrossMajorLimitCount = course['acrossMajorLimitCount'] as int? ?? 0;
     if (countInfo == null) {
-      return acrossMajorLimitCount > 0 ? '$acrossMajorLimitCount人' : '无';
+      return '人数未知';
     }
 
     final amStdCount = countInfo!['amStdCount'] as int? ?? 0;

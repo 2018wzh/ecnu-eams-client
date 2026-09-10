@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/polling_config.dart';
+import 'package:eams_core/eams_core.dart';
 import '../providers/course_provider.dart';
+import '../utils/error_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -92,7 +93,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: () async {
-              await provider.clearAutomationTargets();
+              try {
+                await provider.clearAutomationTargets();
+              } catch (e) {
+                if (context.mounted) {
+                  ErrorDialog.showError(context: context, error: e);
+                }
+                return;
+              }
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('已清空抢课和监控目标')),
