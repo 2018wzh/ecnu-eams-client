@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/course_provider.dart';
 import '../utils/error_dialog.dart';
-import '../services/api_service.dart';
+import '../services/credentials.dart';
 import 'course_search_screen.dart';
 import 'selected_courses_screen.dart';
 import 'rob_screen.dart';
@@ -34,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final courseProvider = Provider.of<CourseProvider>(context, listen: false);
 
     try {
-      await authProvider.loadStudentInfo();
+      if (authProvider.studentID == null) await authProvider.loadStudentInfo();
 
       if (authProvider.currentTurn != null) {
         final turnID = authProvider.currentTurn!['id'] as int;
@@ -90,7 +90,15 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () async {
               final authProvider =
                   Provider.of<AuthProvider>(context, listen: false);
-              await authProvider.logout();
+              final courses = context.read<CourseProvider>();
+              try {
+                await courses.clearSession();
+                await authProvider.logout();
+              } catch (e) {
+                if (context.mounted) {
+                  ErrorDialog.showError(context: context, error: e);
+                }
+              }
             },
           ),
         ],
@@ -148,6 +156,13 @@ class _TurnSelector extends StatefulWidget {
 
 class _TurnSelectorState extends State<_TurnSelector> {
   bool _isLoadingCourses = false;
+  final _apiService = createApiService();
+
+  @override
+  void dispose() {
+    _apiService.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -188,10 +203,27 @@ class _TurnSelectorState extends State<_TurnSelector> {
           );
         }
 
-        if (authProvider.turns == null || authProvider.turns!.isEmpty) {
+        if (authProvider.turns == null) {
           return const Center(
             child: CircularProgressIndicator(),
           );
+        }
+        if (authProvider.turns!.isEmpty) {
+          return Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('当前没有开放的选课轮次'),
+            TextButton(
+                onPressed: () async {
+                  try {
+                    await authProvider.loadTurns();
+                  } catch (e) {
+                    if (context.mounted) {
+                      ErrorDialog.showError(context: context, error: e);
+                    }
+                  }
+                },
+                child: const Text('刷新')),
+          ]));
         }
 
         return Stack(
@@ -215,79 +247,94 @@ class _TurnSelectorState extends State<_TurnSelector> {
                         const SizedBox(height: 8),
                         Text('开放时间: ${turn['openDateTimeText'] ?? ''}'),
                         Text('选课时间: ${turn['selectDateTimeText'] ?? ''}'),
+                        Text('退课时间: ${turn['dropDateTimeText'] ?? ''}'),
+                        if (turn['allowEnter'] != true)
+                          Text('暂不可进入: ${turn['disallowReasons'] ?? ''}'),
                         if (turn['bulletin'] != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               turn['bulletin'],
                               style: const TextStyle(fontSize: 12),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                        for (final rule
+                            in (turn['addRulesText'] as List? ?? []))
+                          Text('• $rule', style: const TextStyle(fontSize: 12)),
                       ],
                     ),
                     trailing: isSelected
                         ? const Icon(Icons.check_circle, color: Colors.blue)
                         : const Icon(Icons.radio_button_unchecked),
-                    onTap: () async {
-                      if (isSelected) return; // 已经是当前轮次
+                    onTap: turn['allowEnter'] != true
+                        ? null
+                        : () async {
+                            if (isSelected) return; // 已经是当前轮次
 
-                      setState(() {
-                        _isLoadingCourses = true;
-                      });
+                            setState(() {
+                              _isLoadingCourses = true;
+                            });
 
-                      try {
-                        authProvider.setCurrentTurn(turn);
+                            try {
+                              await courseProvider.stopAllAndWait();
+                              final selectDetail =
+                                  await _apiService.getSelectDetail(
+                                      int.parse(authProvider.studentID!),
+                                      turn['id']);
+                              final semesterID = (selectDetail['semester']
+                                  as Map)['id'] as int;
+                              await courseProvider.bindContext(
+                                  int.parse(authProvider.studentID!),
+                                  turn['id'],
+                                  semesterID);
+                              authProvider.setCurrentTurn(turn);
 
-                        // 加载筛选条件
-                        await courseProvider.loadQueryCondition(turn['id']);
+                              // 加载筛选条件
+                              await courseProvider
+                                  .loadQueryCondition(turn['id']);
 
-                        // 加载已选课程
-                        if (authProvider.studentID != null) {
-                          await courseProvider.loadSelectedCourses(
-                            turn['id'],
-                            int.parse(authProvider.studentID!),
-                          );
-                        }
+                              // 加载已选课程
+                              if (authProvider.studentID != null) {
+                                await courseProvider.loadSelectedCourses(
+                                  turn['id'],
+                                  int.parse(authProvider.studentID!),
+                                );
+                              }
 
-                        // 加载所有课程（第一页，无筛选条件）
-                        final selectDetail = await ApiService().getSelectDetail(
-                          int.parse(authProvider.studentID!),
-                          turn['id'],
-                        );
-                        final semesterID = (selectDetail['semester']
-                            as Map<String, dynamic>)['id'] as int;
+                              // 加载所有课程（第一页，无筛选条件）
+                              await courseProvider.searchCourses(
+                                studentID: int.parse(authProvider.studentID!),
+                                turnID: turn['id'],
+                                semesterID: semesterID,
+                                pageNo: 1,
+                              );
+                              if (courseProvider.errorMessage != null) {
+                                throw StateError(courseProvider.errorMessage!);
+                              }
 
-                        await courseProvider.searchCourses(
-                          studentID: int.parse(authProvider.studentID!),
-                          turnID: turn['id'],
-                          semesterID: semesterID,
-                          pageNo: 1,
-                        );
-
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('已选择: ${turn['name']}，并加载了课程数据')),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ErrorDialog.showError(
-                            context: context,
-                            error: e,
-                            title: '加载课程数据失败',
-                          );
-                        }
-                      } finally {
-                        if (mounted) {
-                          setState(() {
-                            _isLoadingCourses = false;
-                          });
-                        }
-                      }
-                    },
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          '已选择: ${turn['name']}，并加载了课程数据')),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ErrorDialog.showError(
+                                  context: context,
+                                  error: e,
+                                  title: '加载课程数据失败',
+                                );
+                              }
+                            } finally {
+                              if (mounted) {
+                                setState(() {
+                                  _isLoadingCourses = false;
+                                });
+                              }
+                            }
+                          },
                   ),
                 );
               },

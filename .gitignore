@@ -1,4 +1,8 @@
 .venv
+.tmp/
+.private/
+packages/*/.dart_tool/
+packages/*/build/
 .vscode
 __pycache__/
 *.pyc
@@ -28,7 +32,10 @@ app/*.iml
 app/.metadata
 app/.gradle/
 app/local.properties
-app/*.lock
+app/android/key.properties
+*.jks
+*.keystore
+dist/
 
 # IDE
 .idea/

@@ -17,6 +17,25 @@ class SelectedCoursesScreen extends StatelessWidget {
             child: Text('请先选择选课轮次'),
           );
         }
+        if (courseProvider.selectedError != null) {
+          return Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(courseProvider.selectedError!, textAlign: TextAlign.center),
+            TextButton(
+                onPressed: () async {
+                  try {
+                    await courseProvider.loadSelectedCourses(
+                        authProvider.currentTurn!['id'],
+                        int.parse(authProvider.studentID!));
+                  } catch (e) {
+                    if (context.mounted) {
+                      ErrorDialog.showError(context: context, error: e);
+                    }
+                  }
+                },
+                child: const Text('重新加载')),
+          ]));
+        }
 
         if (courseProvider.selectedCourses.isEmpty &&
             !courseProvider.isLoading) {
@@ -82,52 +101,58 @@ class SelectedCoursesScreen extends StatelessWidget {
                     return CourseCard(
                       course: course,
                       showDropButton: true,
-                      onDrop: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('确认退课'),
-                            content: Text(
-                                '确定要退选 ${course['course']['nameZh'] ?? course['course']['nameEn']} 吗？'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('取消'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text('确认',
-                                    style: TextStyle(color: Colors.red)),
-                              ),
-                            ],
-                          ),
-                        );
-
-                        if (confirmed == true &&
-                            authProvider.studentID != null) {
-                          final success = await courseProvider.dropCourse(
-                            int.parse(authProvider.studentID!),
-                            authProvider.currentTurn!['id'],
-                            course['id'],
-                          );
-
-                          if (context.mounted) {
-                            if (success) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('退课成功'),
-                                  backgroundColor: Colors.green,
+                      onDrop: courseProvider.isActing ||
+                              courseProvider.isRobbing
+                          ? null
+                          : () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('确认退课'),
+                                  content: Text(
+                                      '确定要退选 ${course['course']['nameZh'] ?? course['course']['nameEn']} 吗？'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('取消'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('确认',
+                                          style: TextStyle(color: Colors.red)),
+                                    ),
+                                  ],
                                 ),
                               );
-                            } else {
-                              ErrorDialog.showApiError(
-                                context: context,
-                                message: courseProvider.errorMessage ?? '退课失败',
-                              );
-                            }
-                          }
-                        }
-                      },
+
+                              if (confirmed == true &&
+                                  authProvider.studentID != null) {
+                                final success = await courseProvider.dropCourse(
+                                  int.parse(authProvider.studentID!),
+                                  authProvider.currentTurn!['id'],
+                                  course['id'],
+                                );
+
+                                if (context.mounted) {
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('退课成功'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  } else {
+                                    ErrorDialog.showApiError(
+                                      context: context,
+                                      message:
+                                          courseProvider.errorMessage ?? '退课失败',
+                                    );
+                                  }
+                                }
+                              }
+                            },
                     );
                   },
                 ),

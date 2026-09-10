@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'auth_token_normalizer.dart';
+import 'package:eams_core/eams_core.dart';
 
 class AppLogService {
   final Directory directory;

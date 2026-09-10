@@ -13,6 +13,7 @@ class MonitorScreen extends StatefulWidget {
 
 class _MonitorScreenState extends State<MonitorScreen> {
   final TextEditingController _intervalController = TextEditingController();
+  String? _loadedContext;
 
   @override
   void initState() {
@@ -32,6 +33,11 @@ class _MonitorScreenState extends State<MonitorScreen> {
   Widget build(BuildContext context) {
     return Consumer2<AuthProvider, CourseProvider>(
       builder: (context, authProvider, courseProvider, _) {
+        if (_loadedContext != courseProvider.contextKey) {
+          _loadedContext = courseProvider.contextKey;
+          _intervalController.text =
+              courseProvider.monitorInterval.inSeconds.toString();
+        }
         return Column(
           children: [
             Container(
@@ -91,7 +97,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '监控到余量后将自动提交选课请求。',
+                    '仅提醒可选余量，不提交选课。应用需要保持运行。',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Colors.blue.shade800,
                         ),
@@ -127,6 +133,15 @@ class _MonitorScreenState extends State<MonitorScreen> {
                 ],
               ),
             ),
+            if (courseProvider.automationError != null)
+              Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(courseProvider.automationError!,
+                      style: const TextStyle(color: Colors.red))),
+            if (courseProvider.notificationWarning != null)
+              Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(courseProvider.notificationWarning!)),
             Expanded(
               child: courseProvider.monitorTargets.isEmpty
                   ? Center(
@@ -156,18 +171,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
                         return CourseCard(
                           course: target,
                           priority: target['priority'],
-                          status:
-                              courseProvider.isMonitoring && status.isNotEmpty
-                                  ? status
-                                  : null,
-                          countInfo: status.isNotEmpty
-                              ? {
-                                  'stdCount': status['stdCount'] ?? 0,
-                                  'amStdCount': status['amStdCount'] ?? 0,
-                                }
-                              : null,
+                          status: status.isEmpty ? null : status,
                           showDropButton: true,
-                          showCountInfo: true,
+                          showCountInfo: false,
                           onDrop: () {
                             courseProvider.removeMonitorTarget(target['id']);
                           },

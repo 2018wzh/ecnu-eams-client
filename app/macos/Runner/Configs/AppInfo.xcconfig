@@ -8,7 +8,7 @@
 PRODUCT_NAME = ecnu_eams_client
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.ecnuEamsClient
+PRODUCT_BUNDLE_IDENTIFIER = io.github.wzh2018.ecnuEamsClient
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2025 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © ECNU EAMS Client contributors. GPL-3.0.

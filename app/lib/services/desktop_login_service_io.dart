@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:desktop_webview_window/desktop_webview_window.dart';
 
-import 'auth_token_normalizer.dart';
+import 'package:eams_core/eams_core.dart';
 
 class DesktopLoginResult {
   final String? authorization;
@@ -48,6 +48,7 @@ class DesktopLoginService {
         try {
           final value = await currentWebview.evaluateJavaScript(r'''
 (() => {
+  if (window.location.origin !== 'https://byyt.ecnu.edu.cn') return '';
   const keys = ['authorization', 'Authorization', 'token', 'access_token'];
   for (const store of [window.localStorage, window.sessionStorage]) {
     for (const key of keys) {
@@ -59,6 +60,7 @@ class DesktopLoginService {
 })()
 ''');
           final token = value?.trim() ?? '';
+          if (completer.isCompleted) return;
           if (token.isNotEmpty && token != 'null' && token != 'undefined') {
             completer.complete(
               DesktopLoginResult(

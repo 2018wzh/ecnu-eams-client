@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
+            VALUE "CompanyName", "ECNU EAMS Client contributors" "\0"
             VALUE "FileDescription", "ecnu_eams_client" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "ecnu_eams_client" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) ECNU EAMS Client contributors. GPL-3.0." "\0"
             VALUE "OriginalFilename", "ecnu_eams_client.exe" "\0"
             VALUE "ProductName", "ecnu_eams_client" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

@@ -1,0 +1,15 @@
+name: eams_core
+description: Shared ECNU course selection API and automation for GUI and CLI.
+version: 1.0.0
+publish_to: none
+executables:
+  eams: eams
+environment:
+  sdk: '>=3.12.0 <4.0.0'
+dependencies:
+  http: ^1.6.0
+  http_parser: ^4.1.2
+  args: ^2.6.0
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0
