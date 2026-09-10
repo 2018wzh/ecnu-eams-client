@@ -4,6 +4,9 @@
 
 - `app/` is the Flutter GUI. Keep widgets, platform login, preferences and notifications here.
 - `packages/eams_core/` is a pure Dart package shared by GUI and CLI. API requests, selection transactions, configuration validation and the automation scheduler belong here. Do not add Flutter dependencies to this package.
+- GUI and CLI share `ClientSession`, `ApiService.loadCoursePage`, `CourseCounts` and browser token decoding. Validate ordinary data flows with CLI `--action verify` before using Computer Use for window/navigation checks. Read-only actions never acquire the writer lease or read/write automation journals. Query configuration may contain only version/token; automatic selection still requires the complete scoped target configuration.
+- The school std-count response has six fields: total enrollment, retakes, delayed releases, across-major enrollment, across-business enrollment and its limit (last two may be null). Do not subtract across-major enrollment from the total or relabel retakes as preselection. Use the same parser in GUI and CLI.
+- Resolve course/lesson/teacher text filters against the school's `simplest-lessons` index and send matching lesson IDs to `query-lesson`; the server ignores text fields alone. Keep this resolution in the shared API so CLI verification exercises GUI search behavior.
 - `packages/eams_core/bin/eams.dart` is the CLI entry point. GUI exports versioned UTF-8 JSON including the current `token`, encoded as standard Base64. CLI accepts the string directly through `--config`; no configuration file or separate token input. Keep the per-student/turn/semester execution journal in the OS user state directory, without credentials.
 - Bind persisted GUI targets to student, turn and semester. Never import the old unscoped automation cache.
 - Only the shared scheduler performs automated selection. Monitoring is read-only. Use server `canSelect`/`hasCount` filtering rather than summing different categories of seats.
@@ -11,6 +14,7 @@
 - Checkpoint before submission. Keep the same student's GUI/CLI writer mutually exclusive on one machine. This is a local lock, not a distributed lock.
 - Keep tokens and personal configurations out of source, sample data and logs. API base URL is fixed to the school endpoint.
 - GUI credentials use flutter_secure_storage; never restore the removed SharedPreferences token path. Existing plaintext tokens are discarded and require a fresh login. Base64 CLI export intentionally includes the current token.
+- Windows browser login uses the vendored `packages/desktop_webview_window` patch with native navigation enabled for the whole login session. Never cancel and replay SSO redirects or POST submissions. Decode WebView2 JSON results and accept credentials only from the exact school HTTPS origin. Browser diagnostics record origin, document state and error types, never URLs containing tickets or tokens.
 - Release CI uses Flutter 3.44.1 and committed lockfiles. Tags must match GUI/core versions; all platforms must build before publishing. Android always requires the fixed release signing key. Windows distribution is a portable ZIP; no MSIX dependency is added during CI. See docs/releasing.md.
 
 ## Development

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'config_codec.dart';
 import 'auth_token_normalizer.dart';
 import 'polling_config.dart';
 
@@ -112,17 +113,7 @@ class AutomationConfig {
   }
 
   factory AutomationConfig.fromBase64(String encoded) {
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(utf8.decode(base64Decode(encoded)));
-    } on FormatException {
-      // Decoder exceptions may contain the original credential-bearing input.
-      throw const FormatException('配置必须为 UTF-8 JSON 的 Base64 字符串');
-    }
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('配置必须为 JSON 对象');
-    }
-    return AutomationConfig.fromJson(decoded);
+    return AutomationConfig.fromJson(decodeClientConfiguration(encoded));
   }
   void validate() => AutomationConfig.fromJson(toJson());
 }

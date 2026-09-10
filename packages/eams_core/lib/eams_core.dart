@@ -6,3 +6,8 @@ export 'src/cancellation.dart';
 export 'src/automation_config.dart';
 export 'src/automation_runner.dart';
 export 'src/execution_lease.dart';
+export 'src/course_page.dart';
+export 'src/client_session.dart';
+export 'src/client_config.dart';
+export 'src/browser_login_snapshot.dart';
+export 'src/lesson_search.dart';

@@ -336,20 +336,13 @@ class CourseProvider with ChangeNotifier {
           sortType: sortType,
           pageNo: pageNo,
           pageSize: pageSize);
-      final courses = (result['lessons'] as List)
-          .map((v) => Map<String, dynamic>.from(v as Map))
-          .toList();
-      final counts = courses.isEmpty
-          ? <String, Map<String, dynamic>>{}
-          : await getBatchCountInfo(
-              courses.map((v) => v['id'] as int).toList());
+      final page = await _apiService.loadCoursePage(result);
       if (epoch != _contextVersion || search != _searchVersion) return;
-      _courses = courses;
-      _courseCountInfo = counts;
-      final page = result['pageInfo'] as Map;
-      _currentPage = page['currentPage'] as int;
-      _totalPages = page['totalPages'] as int;
-      _totalRows = page['totalRows'] as int;
+      _courses = page.courses;
+      _courseCountInfo = page.counts;
+      _currentPage = page.currentPage;
+      _totalPages = page.totalPages;
+      _totalRows = page.totalRows;
     } catch (e) {
       if (epoch == _contextVersion && search == _searchVersion) {
         _errorMessage = '搜索失败: $e';
@@ -469,24 +462,7 @@ class CourseProvider with ChangeNotifier {
       List<int> ids) async {
     final raw = await _apiService.getBatchCountInfo(ids);
     return {
-      for (final entry in raw.entries) entry.key: parseCountInfo(entry.value)
-    };
-  }
-
-  @visibleForTesting
-  static Map<String, dynamic> parseCountInfo(String value) {
-    final parts = value.split('-');
-    if (parts.length != 4) throw const FormatException('课程人数格式异常');
-    final n = parts.map(int.parse).toList();
-    if (n.any((v) => v < 0) || n[0] < n[3]) {
-      throw const FormatException('课程人数不一致');
-    }
-    return {
-      'stdCount': n[0] - n[3],
-      'amStdCount': n[3],
-      'preStdCount': n[1],
-      'preAmStdCount': n[2],
-      'totalSelected': n[0]
+      for (final entry in raw.entries) entry.key: CourseCounts.parse(entry.value).toJson()
     };
   }
 

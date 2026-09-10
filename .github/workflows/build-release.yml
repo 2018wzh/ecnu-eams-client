@@ -49,6 +49,11 @@ jobs:
           dart analyze
           dart test
           dart run bin/eams.dart --help
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check browser login extraction
+        run: node --test scripts/test_browser_login.mjs
       - name: Check GUI
         working-directory: app
         run: |

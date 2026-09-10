@@ -65,14 +65,9 @@ class AuthProvider with ChangeNotifier {
   Future<void> loadStudentInfo() async {
     try {
       _errorMessage = null;
-      final studentIDs = await _apiService.getStudentID();
-      if (studentIDs.isNotEmpty) {
-        _studentID = studentIDs.first.toString();
-        await loadTurns();
-      } else {
-        _studentID = null;
-        throw StateError('未找到学生信息');
-      }
+      final account = await ClientSession(_apiService).loadAccount();
+      _studentID = account.studentId.toString();
+      _turns = account.turns;
       notifyListeners();
     } catch (e) {
       _errorMessage = '加载学生信息失败: $e';
@@ -100,6 +95,23 @@ class AuthProvider with ChangeNotifier {
   void setCurrentTurn(Map<String, dynamic> turn) {
     _currentTurn = turn;
     notifyListeners();
+  }
+
+  Future<ClientConfig> exportClientConfig() async {
+    final student = _studentID;
+    final turn = _currentTurn?['id'] as int?;
+    if (!_isAuthenticated || student == null) throw StateError('请先登录');
+    final token = await _apiService.getAuthorization();
+    if (!_isAuthenticated ||
+        student != _studentID ||
+        turn != _currentTurn?['id']) {
+      throw StateError('登录身份或轮次已改变，请重新导出');
+    }
+    return ClientConfig(
+      token: token,
+      studentId: int.parse(student),
+      turnId: turn,
+    );
   }
 
   Future<void> logout() async {

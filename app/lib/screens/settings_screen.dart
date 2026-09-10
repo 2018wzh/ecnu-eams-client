@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:eams_core/eams_core.dart';
 import '../providers/course_provider.dart';
+import '../providers/auth_provider.dart';
 import '../utils/error_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -48,6 +50,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          OutlinedButton.icon(
+            onPressed: () async {
+              try {
+                final config = await context
+                    .read<AuthProvider>()
+                    .exportClientConfig();
+                await Clipboard.setData(
+                  ClipboardData(
+                    text:
+                        'eams --config "${config.toBase64()}" --action verify',
+                  ),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('已复制 CLI 验证命令，包含当前 Token；无需添加抢课目标'),
+                    ),
+                  );
+                }
+              } catch (error) {
+                if (context.mounted) {
+                  ErrorDialog.showError(context: context, error: error);
+                }
+              }
+            },
+            icon: const Icon(Icons.terminal),
+            label: const Text('复制 CLI 只读验证命令'),
+          ),
+          const SizedBox(height: 24),
           Text('轮询设置', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           TextField(
@@ -102,9 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 return;
               }
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已清空抢课和监控目标')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已清空抢课和监控目标')));
               }
             },
             icon: const Icon(Icons.clear_all),
@@ -142,9 +173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               await provider.clearLogs();
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已清空日志')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已清空日志')));
               }
             },
             icon: const Icon(Icons.delete_outline),

@@ -21,6 +21,10 @@ flutter run
 
 Windows 支持 WebView2 内置登录；移动端使用 WebView；其他桌面平台可以在浏览器登录后输入 Authorization Token。登录验证成功后才进入主界面。选择轮次后会加载课程和该轮次保存的目标。
 
+Windows 登录保留浏览器原生重定向和表单提交，并仅从学校 HTTPS 页面的认证 Cookie 或 Web Storage 读取 Token。项目内保留了 WebView 插件的导航修复；登录异常可通过应用日志查看页面域名、加载状态和错误类型，日志不记录登录凭据或认证票据。
+
+“设置 → 复制 CLI 只读验证命令”可直接检查 GUI 共用的账号、轮次、课程分页、人数和已选课程逻辑，无需配置抢课目标。CLI 提供 `--action account/courses/selected/count/verify`，输出 JSON；这些操作不会选退课。详见 [CLI 用法](docs/cli.md)。
+
 ## GUI → CLI
 
 在抢课列表设置目标和优先级，点击“停止并导出 CLI 配置”，复制 Base64 配置或完整启动命令。

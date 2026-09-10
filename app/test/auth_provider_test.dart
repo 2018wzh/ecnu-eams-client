@@ -63,8 +63,13 @@ void main() {
     await login;
     expect(auth.isAuthenticated, isTrue);
     expect(auth.studentID, '1');
+    final exported = ClientConfig.fromBase64((await auth.exportClientConfig()).toBase64());
+    expect(exported.studentId, 1);
+    expect(exported.token, 'token');
+    expect(exported.turnId, isNull);
     await auth.logout();
     expect(auth.isAuthenticated, isFalse);
+    await expectLater(auth.exportClientConfig(), throwsStateError);
     expect(
       await const FlutterSecureStorage().read(key: 'authorization'),
       isNull,

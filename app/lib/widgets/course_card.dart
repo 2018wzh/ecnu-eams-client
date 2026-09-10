@@ -331,21 +331,10 @@ class CourseCard extends StatelessWidget {
     if (countInfo == null) return Colors.grey;
 
     final limitCount = course['limitCount'] as int? ?? 0;
-    final acrossMajorLimitCount = course['acrossMajorLimitCount'] as int? ?? 0;
     final stdCount = countInfo!['stdCount'] as int? ?? 0;
-    final amStdCount = countInfo!['amStdCount'] as int? ?? 0;
-
-    // 计算两个方面的余量
-    final regularAvailable = limitCount - stdCount;
-    final acrossMajorAvailable = acrossMajorLimitCount - amStdCount;
-
-    // 如果任一方面的余量充足（>10），显示绿色
-    if (regularAvailable > 10 || acrossMajorAvailable > 10) return Colors.green;
-    // 如果两个方面都有余量，显示橙色
-    if (regularAvailable > 0 && acrossMajorAvailable > 0) return Colors.orange;
-    // 如果任一方面的余量>0但另一方为0，显示黄色
-    if (regularAvailable > 0 || acrossMajorAvailable > 0) return Colors.yellow;
-    // 都没有余量，显示红色
+    final available = limitCount - stdCount;
+    if (available > 10) return Colors.green;
+    if (available > 0) return Colors.orange;
     return Colors.red;
   }
 
@@ -356,18 +345,16 @@ class CourseCard extends StatelessWidget {
     }
 
     final stdCount = countInfo!['stdCount'] as int? ?? 0;
-    final available = limitCount - stdCount;
-    return '$available/$limitCount';
+    return '已选 $stdCount/$limitCount';
   }
 
   String _getAcrossMajorCountText() {
-    final acrossMajorLimitCount = course['acrossMajorLimitCount'] as int? ?? 0;
+    final acrossMajorLimitCount = course['acrossMajorLimitCount'] as int?;
     if (countInfo == null) {
       return '人数未知';
     }
 
     final amStdCount = countInfo!['amStdCount'] as int? ?? 0;
-    final available = acrossMajorLimitCount - amStdCount;
-    return '$available/$acrossMajorLimitCount';
+    return '跨专业 $amStdCount/${acrossMajorLimitCount ?? '不限'}';
   }
 }

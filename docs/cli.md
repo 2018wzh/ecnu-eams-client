@@ -1,6 +1,27 @@
-# CLI 抢课
+# CLI 查询、验证与抢课
 
 GUI 和 CLI 共用纯 Dart 的 API 和抢课执行层。CLI 不需要启动 Flutter 窗口，但需要网络连接，运行期间电脑不能休眠。
+
+## 用 CLI 验证 GUI 的业务流程
+
+在 GUI 的“设置”中点击“复制 CLI 只读验证命令”。无需添加抢课目标；已选择轮次时只验证该轮次，否则验证账号的所有开放轮次。
+
+```sh
+eams --config "<Base64配置>" --action verify
+eams --config "<Base64配置>" --action account
+eams --config "<Base64配置>" --action courses --turn 123 --course "课程名" --page 1
+eams --config "<Base64配置>" --action courses --turn 123 --available --with-seats
+eams --config "<Base64配置>" --action selected --turn 123
+eams --config "<Base64配置>" --action count --turn 123 --lesson 456
+```
+
+将示例 ID 替换为 `account` / `courses` 返回的 ID。已绑定轮次的配置不能通过 `--turn` 改为另一轮次。`courses`、`selected`、`count` 在存在多个轮次且配置未绑定时要求明确指定轮次。
+
+这些操作输出 JSON，成功退出码为 0，失败为 1；不会提交选退课、获取写锁或读写自动任务日志，可以与 GUI 同时运行。只读配置最少为 `{"version":1,"token":"当前Token"}` 的标准 Base64；可附加 `studentId`、`turnId`、`semesterId`。完整抢课配置也可用于只读操作。凭据仍只从 `--config` 读取。
+
+`verify` 通过 GUI 使用的共享服务依次检查登录身份、轮次与学期、普通课程分页和人数解析、筛选条件、已选课程、服务端可选/有余量筛选，以及一门课程的人数详情。默认从每个轮次的第一页（20 门）开始，再抽查课程名称搜索和另一页（有多页时），不遍历全部课程。它返回各步骤统计，遇到错误会标明失败阶段并返回非零退出码。它不能验证原生窗口布局、账号密码/扫码认证或通知弹窗；这些才需要界面检查。
+
+`courses` 支持 `--teacher`、`--lesson-name`、`--campus`、`--course-type`、`--course-property`、`--department`、`--major`、`--grade`、`--week`、`--credit-min`、`--credit-max`、`--page` 和 `--page-size`（1–100）。课程人数与 GUI 使用同一套六字段解析，不把跨专业分类与总人数相加或相减。是否可选以学校筛选结果为准。
 
 ## GUI 生成配置
 
@@ -56,7 +77,7 @@ Windows 可以将输出名设为 `build/eams.exe`，并使用 `eams.exe` 运行�
 - 仅在已人工确认所有不确定操作、且服务端不存在待处理请求后，使用 `--acknowledge-uncertain` 允许重新运行。GUI 中对应“我已在官网核对”。
 - 业务校验拒绝会标记该目标失败，不会无限重试。修改目标或解决冲突后重新运行。网络错误和限流会有限退避，限流尊重 `Retry-After`；提交后的通信错误不会直接重发。
 
-同一台电脑上的 GUI 与 CLI 通过学生运行锁互斥。不同电脑之间不共享锁；同一账号应只在一个设备上运行自动选课。
+同一台电脑上的 GUI 与 CLI 自动选课通过学生运行锁互斥。只读查询不占用写锁。不同电脑之间不共享锁；同一账号应只在一个设备上运行自动选课。
 
 ## 退出码
 

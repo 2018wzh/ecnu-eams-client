@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:desktop_webview_window/desktop_webview_window.dart';
 
+import 'app_log_service.dart';
 import 'package:eams_core/eams_core.dart';
 
 class DesktopLoginResult {
@@ -18,6 +19,8 @@ class DesktopLoginService {
   static const _loginUrl = 'https://byyt.ecnu.edu.cn/';
 
   Future<DesktopLoginResult> login() async {
+    final log = AppLogService();
+    await log.write('browser_login', 'opening');
     if (!Platform.isWindows) {
       return const DesktopLoginResult(errorMessage: '内置自动登录仅支持 Windows');
     }
@@ -31,6 +34,9 @@ class DesktopLoginService {
     final completer = Completer<DesktopLoginResult>();
     Timer? timer;
     Webview? webview;
+    var extracting = false;
+    var consecutiveErrors = 0;
+    String? lastPageState;
     try {
       webview = await WebviewWindow.create(
         configuration: CreateConfiguration(
@@ -44,44 +50,62 @@ class DesktopLoginService {
 
       Future<void> tryExtract() async {
         final currentWebview = webview;
-        if (completer.isCompleted || currentWebview == null) return;
+        if (completer.isCompleted || currentWebview == null || extracting) {
+          return;
+        }
+        extracting = true;
         try {
-          final value = await currentWebview.evaluateJavaScript(r'''
-(() => {
-  if (window.location.origin !== 'https://byyt.ecnu.edu.cn') return '';
-  const keys = ['authorization', 'Authorization', 'token', 'access_token'];
-  for (const store of [window.localStorage, window.sessionStorage]) {
-    for (const key of keys) {
-      const value = store.getItem(key);
-      if (value) return value;
-    }
-  }
-  return '';
-})()
-''');
-          final token = value?.trim() ?? '';
+          final value = await currentWebview
+              .evaluateJavaScript(browserLoginScript)
+              .timeout(const Duration(seconds: 10));
           if (completer.isCompleted) return;
-          if (token.isNotEmpty && token != 'null' && token != 'undefined') {
+          final snapshot = BrowserLoginSnapshot.parse(value);
+          if (snapshot == null) return; // A document is being replaced.
+          consecutiveErrors = 0;
+          final pageState = '${snapshot.origin} ${snapshot.ready}';
+          if (pageState != lastPageState) {
+            await log.write(
+              'browser_login',
+              'page_state',
+              data: {'origin': snapshot.origin, 'ready': snapshot.ready},
+            );
+            lastPageState = pageState;
+          }
+          if (completer.isCompleted) return;
+          if (snapshot.token != null) {
+            await log.write('browser_login', 'token_received');
+            if (completer.isCompleted) return;
             completer.complete(
-              DesktopLoginResult(
-                authorization: AuthTokenNormalizer.normalize(token),
+              DesktopLoginResult(authorization: snapshot.token),
+            );
+            currentWebview.close();
+          }
+        } catch (error) {
+          if (completer.isCompleted) return;
+          consecutiveErrors++;
+          await log.write(
+            'browser_login',
+            'extraction_failed',
+            data: {
+              'type': error.runtimeType.toString(),
+              'consecutiveErrors': consecutiveErrors,
+            },
+          );
+          if (consecutiveErrors >= 3 && !completer.isCompleted) {
+            completer.complete(
+              const DesktopLoginResult(
+                errorMessage: '无法读取浏览器登录状态，请关闭后重试；详细原因见应用日志',
               ),
             );
             currentWebview.close();
           }
-        } catch (_) {
-          // 页面跨阶段加载时 JS 可能短暂失败，下一轮继续。
+        } finally {
+          extracting = false;
         }
       }
 
-      webview
-        ..launch(_loginUrl)
-        ..setOnUrlRequestCallback((url) {
-          if (url.contains('byyt.ecnu.edu.cn') && !url.contains('login')) {
-            Future<void>.delayed(const Duration(milliseconds: 500), tryExtract);
-          }
-          return true;
-        });
+      // Keep native redirects and POST bodies intact (see the local plugin patch).
+      webview.launch(_loginUrl, triggerOnUrlRequestEvent: false);
 
       timer = Timer.periodic(const Duration(seconds: 1), (_) => tryExtract());
       webview.onClose.whenComplete(() {

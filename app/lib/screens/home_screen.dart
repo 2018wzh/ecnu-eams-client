@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:eams_core/eams_core.dart';
 import '../providers/auth_provider.dart';
 import '../providers/course_provider.dart';
 import '../utils/error_dialog.dart';
@@ -277,12 +278,11 @@ class _TurnSelectorState extends State<_TurnSelector> {
 
                             try {
                               await courseProvider.stopAllAndWait();
-                              final selectDetail =
-                                  await _apiService.getSelectDetail(
+                              final scope = await ClientSession(_apiService)
+                                  .openTurn(StudentAccount(
                                       int.parse(authProvider.studentID!),
-                                      turn['id']);
-                              final semesterID = (selectDetail['semester']
-                                  as Map)['id'] as int;
+                                      authProvider.turns!), turn['id'] as int);
+                              final semesterID = scope.semesterId;
                               await courseProvider.bindContext(
                                   int.parse(authProvider.studentID!),
                                   turn['id'],

@@ -5,6 +5,8 @@ import 'package:http_parser/http_parser.dart' show parseHttpDate;
 import 'course_action_result.dart';
 import 'polling_config.dart';
 import 'cancellation.dart';
+import 'course_page.dart';
+import 'lesson_search.dart';
 import 'auth_token_normalizer.dart';
 
 typedef AuthorizationProvider = Future<String?> Function();
@@ -195,6 +197,12 @@ class ApiService {
     );
   }
 
+  Future<List<Map<String, dynamic>>> getSimplestLessons(int turnID) async {
+    final rows = await _requestList(
+      'GET', '/student/course-select/simplest-lessons/$turnID');
+    return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+  }
+
   Future<Map<String, dynamic>> queryLessons({
     required int studentID,
     required int turnID,
@@ -223,6 +231,13 @@ class ApiService {
     int pageNo = 1,
     int pageSize = 20,
   }) async {
+    var queryIds = ids;
+    if ([courseNameOrCode, lessonNameOrCode, teacherNameOrCode]
+        .any((term) => term.trim().isNotEmpty)) {
+      queryIds = matchLessonIds(await getSimplestLessons(turnID),
+        course: courseNameOrCode, lesson: lessonNameOrCode,
+        teacher: teacherNameOrCode, ids: ids);
+    }
     final body = {
       'turnId': turnID,
       'studentId': studentID,
@@ -250,7 +265,7 @@ class ApiService {
       'creditGte': creditGte,
       'creditLte': creditLte,
       'hasCount': hasCount,
-      'ids': ids,
+      'ids': queryIds,
       'substitutedCourseId': substitutedCourseId,
       'courseSubstitutePoolId': courseSubstitutePoolId,
       'sortField': sortField,
@@ -277,8 +292,9 @@ class ApiService {
     );
   }
 
-  Future<Map<String, dynamic>> getCountInfo(int lessonID) => _requestMap(
-      'GET', '/student/course-select/count-info?lessonId=$lessonID');
+  Future<Map<String, dynamic>> getCountInfo(int lessonID) async =>
+      CourseCounts.validateDetail(await _requestMap(
+        'GET', '/student/course-select/count-info?lessonId=$lessonID'));
 
   Future<Map<String, String>> getBatchCountInfo(List<int> lessonIDs) async {
     final data = await _requestMap(
@@ -287,6 +303,23 @@ class ApiService {
       body: {'lessonIds': lessonIDs},
     );
     return Map<String, String>.from(data);
+  }
+
+  /// Complete the same course page used by GUI and CLI with batch enrollment.
+  Future<CoursePage> loadCoursePage(Map<String, dynamic> response) async {
+    final raw = response['lessons'];
+    if (raw is! List) throw const FormatException('课程查询缺少 lessons');
+    final ids = <int>[];
+    for (final lesson in raw) {
+      if (lesson is! Map || lesson['id'] is! int || lesson['id'] <= 0) {
+        throw const FormatException('课程条目缺少有效教学班 ID');
+      }
+      ids.add(lesson['id'] as int);
+    }
+    final counts = ids.isEmpty
+        ? <String, String>{}
+        : await getBatchCountInfo(ids);
+    return CoursePage.parse(response, counts);
   }
 
   Future<CourseActionResult> addCourse(
