@@ -39,8 +39,6 @@ const wchar_t *RegisterWindowClass(LPCWSTR class_name, WNDPROC wnd_proc);
 
 void UnregisterWindowClass(LPCWSTR class_name);
 
-std::string ConvertLPCWSTRToString(LPCWSTR lpcwszStr);
-
 }  // namespace webview_window
 
 #endif //DESKTOP_WEBVIEW_WINDOW_WINDOWS_UTILS_H_

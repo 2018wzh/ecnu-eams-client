@@ -82,6 +82,20 @@ class WebviewWindow {
       return;
     }
     switch (call.method) {
+      case 'onTitleBarAction':
+        final handler = webView.titleBarActionHandler;
+        String? message;
+        try {
+          message = handler == null ? '当前窗口不支持此操作' :
+              await handler(call.arguments['action'] as String);
+        } catch (error) {
+          message = '操作失败（${error.runtimeType}），请重试或查看应用日志';
+        }
+        await _otherIsolateMessageHandler.invokeMethod('onTitleBarActionResult', {
+          'webViewId': webViewId,
+          'message': message,
+        });
+        break;
       case 'onBackPressed':
         await webView.back();
         break;

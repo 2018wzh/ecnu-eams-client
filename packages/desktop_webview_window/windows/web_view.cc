@@ -329,7 +329,8 @@ void WebView::Stop() {
 }
 
 void WebView::GetAllCookies(
-    std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+    std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result,
+    const std::wstring &url) {
   if (webview_) {
     wil::com_ptr<ICoreWebView2_2> webView2;
     HRESULT hr = webview_->QueryInterface(IID_PPV_ARGS(&webView2));
@@ -348,7 +349,7 @@ void WebView::GetAllCookies(
     }
 
     cookieManager->GetCookies(
-        nullptr,
+        url.empty() ? nullptr : url.c_str(),
         Callback<ICoreWebView2GetCookiesCompletedHandler>(
             [result = std::move(result)](
                 HRESULT hr, ICoreWebView2CookieList *cookieList) -> HRESULT {
@@ -365,55 +366,66 @@ void WebView::GetAllCookies(
               }
 
               std::vector<flutter::EncodableValue> cookies;
+              const auto fail = [&result](const char *property, HRESULT status) {
+                result->Error("cookie_read_failed", std::string("Cannot read cookie ") +
+                    property + " (HRESULT " + std::to_string(status) + ")");
+              };
               for (UINT i = 0; i < cookieCount; ++i) {
                 wil::com_ptr<ICoreWebView2Cookie> cookie;
                 hr = cookieList->GetValueAtIndex(i, &cookie);
                 if (FAILED(hr) || !cookie) {
-                  continue;
+                  fail("entry", hr);
+                  return S_OK;
                 }
 
                 wil::unique_cotaskmem_string name;
                 wil::unique_cotaskmem_string value;
                 wil::unique_cotaskmem_string domain;
                 wil::unique_cotaskmem_string path;
-                double expires;
+                double expires = -1.0;
                 BOOL isSecure;
                 BOOL isHttpOnly;
                 BOOL isSessionOnly;
 
                 hr = cookie->get_Name(&name);
-                if (FAILED(hr)) continue;
+                if (FAILED(hr)) { fail("name", hr); return S_OK; }
                 hr = cookie->get_Value(&value);
-                if (FAILED(hr)) continue;
+                if (FAILED(hr)) { fail("value", hr); return S_OK; }
                 hr = cookie->get_Domain(&domain);
-                if (FAILED(hr)) continue;
+                if (FAILED(hr)) { fail("domain", hr); return S_OK; }
                 hr = cookie->get_Path(&path);
-                if (FAILED(hr)) continue;
-                hr = cookie->get_Expires(&expires);
-                if (FAILED(hr)) continue;
+                if (FAILED(hr)) { fail("path", hr); return S_OK; }
                 hr = cookie->get_IsSecure(&isSecure);
-                if (FAILED(hr)) continue;
+                if (FAILED(hr)) { fail("secure", hr); return S_OK; }
                 hr = cookie->get_IsHttpOnly(&isHttpOnly);
-                if (FAILED(hr)) continue;
+                if (FAILED(hr)) { fail("httpOnly", hr); return S_OK; }
                 hr = cookie->get_IsSession(&isSessionOnly);
-                if (FAILED(hr)) continue;
+                if (FAILED(hr)) { fail("sessionOnly", hr); return S_OK; }
+                if (!isSessionOnly) {
+                  hr = cookie->get_Expires(&expires);
+                  if (FAILED(hr)) { fail("expires", hr); return S_OK; }
+                }
 
                 std::map<flutter::EncodableValue, flutter::EncodableValue>
                     cookieMap;
+                if (!name || !value || !domain || !path) {
+                  fail("string", E_POINTER);
+                  return S_OK;
+                }
                 cookieMap[flutter::EncodableValue("name")] =
                     flutter::EncodableValue(
-                        webview_window::ConvertLPCWSTRToString(name.get()));
+                        wide_to_utf8(std::wstring(name.get())));
                 cookieMap[flutter::EncodableValue("value")] =
                     flutter::EncodableValue(
-                        webview_window::ConvertLPCWSTRToString(value.get()));
+                        wide_to_utf8(std::wstring(value.get())));
                 cookieMap[flutter::EncodableValue("domain")] =
                     flutter::EncodableValue(
-                        webview_window::ConvertLPCWSTRToString(domain.get()));
+                        wide_to_utf8(std::wstring(domain.get())));
                 cookieMap[flutter::EncodableValue("path")] =
                     flutter::EncodableValue(
-                        webview_window::ConvertLPCWSTRToString(path.get()));
+                        wide_to_utf8(std::wstring(path.get())));
 
-                if (expires >= 0) {
+                if (!isSessionOnly && expires >= 0) {
                   cookieMap[flutter::EncodableValue(std::string("expires"))] =
                       flutter::EncodableValue(static_cast<double>(expires));
                 } else {

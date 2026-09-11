@@ -72,7 +72,8 @@ class CourseProvider with ChangeNotifier {
   Map<int, Map<String, dynamic>> get monitorTargetStatuses =>
       _statusMaps(_monitorStates);
   bool get hasUncertainActions => _robStates.values.any(
-      (s) => s.phase == TaskPhase.uncertain || s.phase == TaskPhase.submitting);
+      (s) => s.phase == TaskPhase.uncertain || s.phase == TaskPhase.submitting,
+  );
 
   Map<int, Map<String, dynamic>> _statusMaps(Map<int, TaskUpdate> states) => {
         for (final entry in states.entries)
@@ -150,19 +151,26 @@ class CourseProvider with ChangeNotifier {
     if (raw == null || epoch != _contextVersion) return;
     final data = jsonDecode(raw) as Map<String, dynamic>;
     _pollingConfig =
-        PollingConfig.fromJson(data['pollingConfig'] as Map<String, dynamic>?);
+        PollingConfig.fromJson(data['pollingConfig'] as Map<String, dynamic>?,
+    );
     _robInterval = Duration(
-        milliseconds: boundedInt(data['robIntervalMs'], '抢课间隔', 200, 60000));
+        milliseconds: boundedInt(data['robIntervalMs'], '抢课间隔', 200, 60000),
+    );
     _monitorInterval = Duration(
         milliseconds:
-            boundedInt(data['monitorIntervalMs'], '监控间隔', 200, 60000));
+            boundedInt(data['monitorIntervalMs'], '监控间隔', 200, 60000),
+    );
     _scheduledStartTime = data['scheduledStartTime'] == null
         ? null
         : DateTime.parse(data['scheduledStartTime'] as String);
     _robTargets.addAll((data['robTargets'] as List)
-        .map((v) => Map<String, dynamic>.from(v as Map)));
+        .map((v) => Map<String, dynamic>.from(v as Map),
+      ),
+    );
     _monitorTargets.addAll((data['monitorTargets'] as List)
-        .map((v) => Map<String, dynamic>.from(v as Map)));
+        .map((v) => Map<String, dynamic>.from(v as Map),
+      ),
+    );
     for (final raw in data['robStates'] as List) {
       final state = TaskUpdate.fromJson(Map<String, dynamic>.from(raw as Map));
       _robStates[state.lessonId] = state;
@@ -203,7 +211,8 @@ class CourseProvider with ChangeNotifier {
     unawaited(saveAutomationState().catchError((Object e) {
       _automationError = '保存任务失败: $e';
       _changed();
-    }));
+    }),
+    );
   }
 
   Future<void> clearAutomationTargets() async {
@@ -221,7 +230,8 @@ class CourseProvider with ChangeNotifier {
     if (_studentId == null || _turnId == null) return;
     await stopAllAndWait();
     final selected =
-        await _apiService.getSelectedLessons(_turnId!, _studentId!);
+        await _apiService.getSelectedLessons(_turnId!, _studentId!,
+    );
     for (final entry in Map<int, TaskUpdate>.from(_robStates).entries) {
       if (entry.value.phase != TaskPhase.submitting &&
           entry.value.phase != TaskPhase.uncertain) {
@@ -231,7 +241,8 @@ class CourseProvider with ChangeNotifier {
           (entry.value.action == 'add')) {
         _robStates[entry.key] = TaskUpdate(
             entry.key, TaskPhase.succeeded, '已核对操作成功',
-            action: entry.value.action);
+            action: entry.value.action,
+        );
       }
     }
     _selectedCourses = selected;
@@ -246,7 +257,8 @@ class CourseProvider with ChangeNotifier {
           entry.value.phase == TaskPhase.uncertain) {
         _robStates[entry.key] = TaskUpdate(
             entry.key, TaskPhase.cancelled, '用户已在官网核对，允许重新操作',
-            action: entry.value.action);
+            action: entry.value.action,
+        );
       }
     }
     _automationError = null;
@@ -257,7 +269,8 @@ class CourseProvider with ChangeNotifier {
   Future<void> clearLogs() => _logService.clear();
   Future<String> readLogs() => _logService.readRecent();
   int getTotalVirtualCost() => _selectedCourses.fold(
-      0, (sum, c) => sum + ((c['virtualCost'] as num?)?.toInt() ?? 0));
+      0, (sum, c) => sum + ((c['virtualCost'] as num?)?.toInt() ?? 0),
+  );
 
   Future<void> loadQueryCondition(int turnID) async {
     final epoch = _contextVersion;
@@ -308,7 +321,8 @@ class CourseProvider with ChangeNotifier {
       String sortField = 'lesson',
       String sortType = 'ASC',
       int pageNo = 1,
-      int pageSize = 20}) async {
+      int pageSize = 20,
+  }) async {
     final epoch = _contextVersion, search = ++_searchVersion;
     _isLoading = true;
     _errorMessage = null;
@@ -335,7 +349,8 @@ class CourseProvider with ChangeNotifier {
           sortField: sortField,
           sortType: sortType,
           pageNo: pageNo,
-          pageSize: pageSize);
+          pageSize: pageSize,
+      );
       final page = await _apiService.loadCoursePage(result);
       if (epoch != _contextVersion || search != _searchVersion) return;
       _courses = page.courses;
@@ -371,13 +386,15 @@ class CourseProvider with ChangeNotifier {
   }
 
   Future<bool> addCourse(
-          int studentID, int turnID, int lessonID, int virtualCost) =>
+          int studentID, int turnID, int lessonID, int virtualCost,
+  ) =>
       _manualAction(true, studentID, turnID, lessonID, virtualCost);
   Future<bool> dropCourse(int studentID, int turnID, int lessonID) =>
       _manualAction(false, studentID, turnID, lessonID, 0);
 
   Future<bool> _manualAction(
-      bool add, int student, int turn, int lesson, int cost) async {
+      bool add, int student, int turn, int lesson, int cost,
+  ) async {
     if (_isActing || isRobbing || hasUncertainActions) {
       _errorMessage = '请先停止抢课并核对未完成的操作';
       _changed();
@@ -400,13 +417,16 @@ class CourseProvider with ChangeNotifier {
       lease = await ExecutionLease.acquire(student);
       _robStates[lesson] = TaskUpdate(
           lesson, TaskPhase.submitting, add ? '手动选课处理中' : '手动退课处理中',
-          action: add ? 'add' : 'drop');
+          action: add ? 'add' : 'drop',
+      );
       await saveAutomationState();
       final result = add
           ? await _apiService.addCourse(student, turn, lesson, cost,
-              polling: _pollingConfig, cancellation: token)
+              polling: _pollingConfig, cancellation: token,
+            )
           : await _apiService.dropCourse(student, turn, lesson,
-              polling: _pollingConfig, cancellation: token);
+              polling: _pollingConfig, cancellation: token,
+            );
       outcome = result;
       _robStates[lesson] = TaskUpdate(
           lesson,
@@ -418,15 +438,17 @@ class CourseProvider with ChangeNotifier {
           result.message,
           attempts: result.attempts,
           requestId: result.requestId,
-          action: add ? 'add' : 'drop');
+          action: add ? 'add' : 'drop',
+      );
       await saveAutomationState();
       await _logService
           .write(add ? 'addCourse' : 'dropCourse', result.message, data: {
         'lessonId': lesson,
         'outcome': result.outcome.name,
         'requestId': result.requestId,
-        'attempts': result.attempts
-      });
+        'attempts': result.attempts,
+        },
+      );
       if (!result.success) {
         _errorMessage = result.message;
         return false;
@@ -459,10 +481,11 @@ class CourseProvider with ChangeNotifier {
   Future<Map<String, dynamic>> getCountInfo(int lessonID) =>
       _apiService.getCountInfo(lessonID);
   Future<Map<String, Map<String, dynamic>>> getBatchCountInfo(
-      List<int> ids) async {
+      List<int> ids,
+  ) async {
     final raw = await _apiService.getBatchCountInfo(ids);
     return {
-      for (final entry in raw.entries) entry.key: CourseCounts.parse(entry.value).toJson()
+      for (final entry in raw.entries) entry.key: CourseCounts.parse(entry.value).toJson(),
     };
   }
 
@@ -497,13 +520,15 @@ class CourseProvider with ChangeNotifier {
   void addMonitorTarget(Map<String, dynamic> course, {int virtualCost = 0}) =>
       _addTarget(_monitorTargets, course, virtualCost);
   void _addTarget(List<Map<String, dynamic>> targets,
-      Map<String, dynamic> course, int cost) {
+      Map<String, dynamic> course, int cost,
+  ) {
     if (_stateKey == null) throw StateError('请先选择轮次');
     if (targets.length >= 100) throw StateError('最多支持 100 门目标课程');
     if (isRobbing || isMonitoring) throw StateError('请先停止自动任务再添加目标');
     if (targets.any((v) => v['id'] == course['id'])) return;
     targets
-        .add({...course, 'virtualCost': cost, 'priority': targets.length + 1});
+        .add({...course, 'virtualCost': cost, 'priority': targets.length + 1,
+    });
     _save();
     _changed();
   }
@@ -546,7 +571,8 @@ class CourseProvider with ChangeNotifier {
   Future<AutomationConfig> buildRobConfig() =>
       _config(_robTargets, _robInterval, _scheduledStartTime);
   Future<AutomationConfig> _config(List<Map<String, dynamic>> targets,
-      Duration interval, DateTime? start) async {
+      Duration interval, DateTime? start,
+  ) async {
     final epoch = _contextVersion;
     final token = await _apiService.getAuthorization();
     if (epoch != _contextVersion) throw StateError('学生或轮次已改变');
@@ -555,6 +581,7 @@ class CourseProvider with ChangeNotifier {
     }
     final config = AutomationConfig(
         token: token,
+      portalSession: await _apiService.getPortalSession(),
         studentId: _studentId!,
         turnId: _turnId!,
         semesterId: _semesterId!,
@@ -568,8 +595,11 @@ class CourseProvider with ChangeNotifier {
                         t['course']?['nameEn'] ??
                         t['code'])
                     .toString(),
-                virtualCost: t['virtualCost'] as int))
-            .toList());
+                virtualCost: t['virtualCost'] as int,
+            ),
+          )
+          .toList(),
+    );
     config.validate();
     return config;
   }
@@ -629,15 +659,18 @@ class CourseProvider with ChangeNotifier {
                     previous?.requestId != update.requestId)) {
               await saveAutomationState();
             }
-            if (update.phase == TaskPhase.submitting ||
+            if (update.action == 'session' ||
+              update.phase == TaskPhase.submitting ||
                 update.phase == TaskPhase.failed ||
                 update.phase == TaskPhase.uncertain ||
                 update.phase == TaskPhase.succeeded) {
               await _logService.write('automation', update.message,
-                  data: update.toJson());
-            }
-            if (update.phase == TaskPhase.succeeded ||
-                update.phase == TaskPhase.available) {
+                  data: update.toJson(),
+            );
+          }
+          if (update.action != 'session' &&
+              (update.phase == TaskPhase.succeeded ||
+                  update.phase == TaskPhase.available)) {
               final name = config.targets
                   .firstWhere((t) => t.lessonId == update.lessonId)
                   .name;
@@ -646,13 +679,15 @@ class CourseProvider with ChangeNotifier {
                     title:
                         update.phase == TaskPhase.succeeded ? '选课成功' : '课程余量提醒',
                     body: '$name：${update.message}',
-                    id: update.lessonId);
-              } catch (e) {
-                _notificationWarning = '系统通知不可用: $e';
-                _changed();
-              }
+                    id: update.lessonId,
+              );
+            } catch (e) {
+              _notificationWarning = '系统通知不可用: $e';
+              _changed();
             }
-          });
+          }
+        },
+      );
       if (monitor) {
         _monitorRunner = runner;
       } else {
@@ -707,7 +742,7 @@ class CourseProvider with ChangeNotifier {
     await Future.wait([
       if (_robFuture != null) _robFuture!,
       if (_monitorFuture != null) _monitorFuture!,
-      if (_actionFuture != null) _actionFuture!
+      if (_actionFuture != null) _actionFuture!,
     ]);
   }
 

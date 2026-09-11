@@ -97,7 +97,7 @@ void WebviewWindow::CreateAndShow(const std::wstring &title, int height, int wid
     SetWindowPos(hwnd_.get(), nullptr, rc.left, rc.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
   }
 
-  auto title_bar_height = Scale(title_bar_height_, scale_factor);
+  auto title_bar_height = Scale(title_bar_height_, GetDpiForWindow(hwnd_.get()) / 96.0);
 
   // Create the browser view.
   web_view_ = std::make_unique<webview_window::WebView>(
@@ -239,8 +239,9 @@ WebviewWindow::MessageHandler(
     case WM_SIZE: {
       RECT rect;
       GetClientRect(hwnd, &rect);
-      HMONITOR monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
-      UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+      // Client coordinates always start at (0, 0), which can identify a different
+      // monitor. Match the actual window DPI used by the embedded Flutter view.
+      UINT dpi = GetDpiForWindow(hwnd);
       double scale_factor = dpi / 96.0;
 
       auto title_bar_height = Scale(title_bar_height_, scale_factor);
@@ -290,4 +291,3 @@ WebviewWindow *WebviewWindow::GetThisFromHandle(HWND const window) noexcept {
   return reinterpret_cast<WebviewWindow *>(
       GetWindowLongPtr(window, GWLP_USERDATA));
 }
-

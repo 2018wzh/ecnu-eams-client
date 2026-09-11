@@ -24,7 +24,7 @@ class WebviewCookie {
       name: json['name'],
       value: json['value'],
       domain: json['domain'],
-      expires: json['expires'] == null
+      expires: json['sessionOnly'] == true || json['expires'] == null
           ? null
           : DateTime.fromMillisecondsSinceEpoch(
               ((json['expires'] as num) * 1000).toInt(),

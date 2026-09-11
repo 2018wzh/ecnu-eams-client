@@ -2,13 +2,16 @@ import 'dart:convert';
 import 'auth_token_normalizer.dart';
 import 'automation_config.dart' show positiveInt;
 import 'config_codec.dart';
+import 'portal_session.dart';
 
 /// Read-only commands need only a token; GUI automation exports also work.
 class ClientConfig {
   final String token;
+  final PortalSession? portalSession;
   final int? studentId, turnId, semesterId;
   const ClientConfig({
     required this.token,
+    this.portalSession,
     this.studentId,
     this.turnId,
     this.semesterId,
@@ -22,6 +25,9 @@ class ClientConfig {
         json[name] == null ? null : positiveInt(json[name], name);
     return ClientConfig(
       token: AuthTokenNormalizer.normalize(json['token'] as String),
+      portalSession: json['portalSession'] == null
+          ? null
+          : PortalSession.fromJson(json['portalSession']),
       studentId: id('studentId'),
       turnId: id('turnId'),
       semesterId: id('semesterId'),
@@ -33,6 +39,7 @@ class ClientConfig {
   Map<String, dynamic> toJson() => {
     'version': 1,
     'token': token,
+    if (portalSession != null) 'portalSession': portalSession!.toJson(),
     if (studentId != null) 'studentId': studentId,
     if (turnId != null) 'turnId': turnId,
     if (semesterId != null) 'semesterId': semesterId,

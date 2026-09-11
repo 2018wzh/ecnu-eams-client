@@ -11,3 +11,4 @@ export 'src/client_session.dart';
 export 'src/client_config.dart';
 export 'src/browser_login_snapshot.dart';
 export 'src/lesson_search.dart';
+export 'src/portal_session.dart';

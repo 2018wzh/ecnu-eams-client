@@ -18,6 +18,10 @@ typedef OnUrlRequestCallback = bool Function(String url);
 typedef OnWebMessageReceivedCallback = void Function(String message);
 
 abstract class Webview {
+  /// Handles a user action from a custom Flutter title bar. Return an error
+  /// message to keep the window open and display it in the title bar.
+  void setTitleBarActionHandler(Future<String?> Function(String action)? handler);
+
   Future<void> get onClose;
 
   ///  true if the webview is currently loading a page.
@@ -91,7 +95,7 @@ abstract class Webview {
   void removeAllWebMessageReceivedCallback();
 
   /// Close the web view window.
-  void close();
+  Future<void> close();
 
   /// evaluate JavaScript in the web view.
   Future<String?> evaluateJavaScript(String javaScript);
@@ -102,5 +106,6 @@ abstract class Webview {
   /// post a web message as JSON to the top level document in this WebView
   Future<void> postWebMessageAsJson(String webMessage);
 
-  Future<List<WebviewCookie>> getAllCookies();
+  /// On Windows, [url] asks WebView2 for cookies applicable to that request URL.
+  Future<List<WebviewCookie>> getAllCookies({String? url});
 }

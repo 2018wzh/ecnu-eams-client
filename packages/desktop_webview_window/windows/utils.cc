@@ -96,14 +96,4 @@ void UnregisterWindowClass(LPCWSTR class_name) {
   UnregisterClass(class_name, nullptr);
 }
 
-std::string ConvertLPCWSTRToString(LPCWSTR lpcwszStr) {
-  int strLength = WideCharToMultiByte(CP_UTF8, 0, lpcwszStr, -1, nullptr, 0,
-                                      nullptr, nullptr);
-  std::string str(strLength, 0);
-
-  WideCharToMultiByte(CP_UTF8, 0, lpcwszStr, -1, &str[0], strLength, nullptr,
-                      nullptr);
-  return str;
-}
-
 }  // namespace webview_window

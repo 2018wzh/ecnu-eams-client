@@ -63,7 +63,8 @@ void main() {
     await login;
     expect(auth.isAuthenticated, isTrue);
     expect(auth.studentID, '1');
-    final exported = ClientConfig.fromBase64((await auth.exportClientConfig()).toBase64());
+    final exported = ClientConfig.fromBase64((await auth.exportClientConfig()).toBase64(),
+    );
     expect(exported.studentId, 1);
     expect(exported.token, 'token');
     expect(exported.turnId, isNull);
@@ -92,6 +93,41 @@ void main() {
     api.close();
     auth.dispose();
   });
+  test(
+    'browser session is saved securely and manual login clears it',
+    () async {
+      const storage = FlutterSecureStorage();
+      final api = ApiService(
+        client: MockClient(
+          (r) async => http.Response(
+            jsonEncode({
+              'result': 0,
+              'data': r.url.path.endsWith('students') ? [1] : [],
+            }),
+            200,
+          ),
+        ),
+      );
+      final auth = AuthProvider(apiService: api);
+      const session = PortalSession(
+        session: 'session-secret',
+        gateway: 'gateway-secret',
+      );
+      await auth.setAuthorization('token', portalSession: session);
+      expect(
+        jsonDecode((await storage.read(key: 'portalSession'))!),
+        session.toJson(),
+      );
+      expect((await auth.exportClientConfig()).portalSession, isNull);
+      await auth.setAuthorization('manual-token');
+      expect(await storage.read(key: 'portalSession'), isNull);
+      await auth.setAuthorization('token', portalSession: session);
+      await auth.logout();
+      expect(await storage.read(key: 'portalSession'), isNull);
+      auth.dispose();
+      api.close();
+    },
+  );
   test(
     'transient startup failure preserves credentials for a later retry',
     () async {

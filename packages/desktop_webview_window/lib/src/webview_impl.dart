@@ -31,6 +31,13 @@ class WebviewImpl extends Webview {
 
   WebviewImpl(this.viewId, this.channel);
 
+  Future<String?> Function(String action)? titleBarActionHandler;
+
+  @override
+  void setTitleBarActionHandler(Future<String?> Function(String action)? handler) {
+    titleBarActionHandler = handler;
+  }
+
   @override
   Future<void> get onClose => _closeCompleter.future;
 
@@ -47,7 +54,8 @@ class WebviewImpl extends Webview {
   }
 
   String onRunJavaScriptTextInputPanelWithPrompt(
-      String prompt, String defaultText) {
+      String prompt, String defaultText,
+  ) {
     assert(!_closed);
     return _promptHandler?.call(prompt, defaultText) ?? defaultText;
   }
@@ -84,7 +92,8 @@ class WebviewImpl extends Webview {
 
   @override
   void registerJavaScriptMessageHandler(
-      String name, JavaScriptMessageHandler handler) {
+      String name, JavaScriptMessageHandler handler,
+  ) {
     if (!Platform.isMacOS && !Platform.isLinux) {
       return;
     }
@@ -256,11 +265,11 @@ class WebviewImpl extends Webview {
   }
 
   @override
-  void close() {
+  Future<void> close() async {
     if (_closed) {
       return;
     }
-    channel.invokeMethod("close", {"viewId": viewId});
+    await channel.invokeMethod<void>("close", {"viewId": viewId});
   }
 
   @override
@@ -292,14 +301,13 @@ class WebviewImpl extends Webview {
   }
 
   @override
-  Future<List<WebviewCookie>> getAllCookies() async {
+  Future<List<WebviewCookie>> getAllCookies({String? url}) async {
     final result = await channel.invokeListMethod<Map>("getAllCookies", {
       "viewId": viewId,
+      if (url != null) "url": url,
     });
 
-    return result
-            ?.map((e) => WebviewCookie.fromJson(e.cast<String, dynamic>()))
-            .toList() ??
-        [];
+    if (result == null) throw StateError('WebView cookie response is missing');
+    return result.map((e) => WebviewCookie.fromJson(e.cast<String, dynamic>())).toList();
   }
 }

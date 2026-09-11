@@ -49,7 +49,8 @@ class WebView {
 
   void Stop();
 
-  void GetAllCookies(std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> completer);
+  void GetAllCookies(std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> completer,
+                     const std::wstring &url = L"");
 
   void openDevToolsWindow();
 

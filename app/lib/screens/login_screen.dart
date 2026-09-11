@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:eams_core/eams_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
@@ -174,7 +175,9 @@ class _LoginScreenState extends State<LoginScreen> {
       });
       if (result.success) {
         await _completeLogin(result.authorization!,
-            successLogEvent: 'desktop_webview');
+          portalSession: result.portalSession,
+          successLogEvent: 'desktop_webview',
+        );
         return;
       }
       await _logService.write(
@@ -203,10 +206,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<bool> _completeLogin(
     String authorization, {
     required String successLogEvent,
+    PortalSession? portalSession,
   }) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     try {
-      await authProvider.setAuthorization(authorization);
+      await authProvider.setAuthorization(authorization,
+        portalSession: portalSession,
+      );
       try {
         await _logService.write('login', successLogEvent, data: {'ok': true});
       } catch (e) {
@@ -216,8 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('登录成功！'),
-          backgroundColor: Colors.green,
-        ),
+          backgroundColor: Colors.green),
       );
       return true;
     } catch (e) {
@@ -226,8 +231,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ErrorDialog.showError(
         context: context,
         error: e,
-        title: '登录失败',
-      );
+        title: '登录失败');
       return false;
     }
   }
@@ -306,10 +310,10 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.all(16),
               child: Text(authError,
                   style: const TextStyle(color: Colors.red),
-                  textAlign: TextAlign.center)),
-      appBar: AppBar(
-        title: const Text('登录ECNU选课系统'),
-      ),
+                  textAlign: TextAlign.center,
+              ),
+            ),
+      appBar: AppBar(title: const Text('登录ECNU选课系统')),
       body: _useExternalBrowser
           ? Center(
               child: Padding(
@@ -318,7 +322,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(Icons.open_in_browser,
-                        size: 64, color: Colors.blue),
+                        size: 64, color: Colors.blue,
+                    ),
                     const SizedBox(height: 24),
                     Text(
                       kIsWeb
@@ -348,7 +353,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
+                            horizontal: 24, vertical: 12,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -366,13 +372,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     WebViewWidget(controller: _controller!),
                     if (_isLoading)
                       const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                  ],
-                )
-              : const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                        child: CircularProgressIndicator()),
+              ],
+            )
+          : const Center(child: CircularProgressIndicator()),
     );
   }
 }

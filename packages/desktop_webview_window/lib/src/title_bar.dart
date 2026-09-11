@@ -36,6 +36,12 @@ bool runWebViewTitleBarWidget(
 }
 
 mixin TitleBarWebViewController {
+  Future<void> performAction(String action) async {
+    await _channel.invokeMethod('onTitleBarAction', {
+      'webViewId': _webViewId,
+      'action': action,
+    });
+  }
   static TitleBarWebViewController of(BuildContext context) {
     final state = context.findAncestorStateOfType<_TitleBarAppState>();
     assert(state != null,
@@ -89,12 +95,16 @@ class TitleBarWebViewState extends InheritedWidget {
     required this.canGoBack,
     required this.canGoForward,
     required this.url,
+    this.actionPending = false,
+    this.actionMessage,
   });
 
   final bool isLoading;
   final bool canGoBack;
   final bool canGoForward;
   final String? url;
+  final bool actionPending;
+  final String? actionMessage;
 
   static TitleBarWebViewState of(BuildContext context) {
     final TitleBarWebViewState? result =
@@ -105,7 +115,9 @@ class TitleBarWebViewState extends InheritedWidget {
 
   @override
   bool updateShouldNotify(TitleBarWebViewState oldWidget) {
-    return isLoading != oldWidget.isLoading ||
+    return actionPending != oldWidget.actionPending ||
+        actionMessage != oldWidget.actionMessage ||
+        isLoading != oldWidget.isLoading ||
         canGoBack != oldWidget.canGoBack ||
         canGoForward != oldWidget.canGoForward;
   }
@@ -139,6 +151,22 @@ class _TitleBarAppState extends State<_TitleBarApp>
   bool _isLoading = false;
 
   String? _url;
+  bool _actionPending = false;
+  String? _actionMessage;
+
+  @override
+  Future<void> performAction(String action) async {
+    if (_actionPending) return;
+    setState(() { _actionPending = true; _actionMessage = null; });
+    try {
+      await super.performAction(action);
+    } catch (error) {
+      if (mounted) setState(() {
+        _actionPending = false;
+        _actionMessage = '无法发送操作，请重试（${error.runtimeType}）';
+      });
+    }
+  }
 
   @override
   int get _webViewId => widget.webViewId;
@@ -153,6 +181,12 @@ class _TitleBarAppState extends State<_TitleBarApp>
         return;
       }
       switch (call.method) {
+        case 'onTitleBarActionResult':
+          setState(() {
+            _actionPending = false;
+            _actionMessage = args['message'] as String?;
+          });
+          break;
         case "onHistoryChanged":
           setState(() {
             _canGoBack = args['canGoBack'] as bool;
@@ -192,6 +226,8 @@ class _TitleBarAppState extends State<_TitleBarApp>
             canGoBack: _canGoBack,
             canGoForward: _canGoForward,
             url: _url,
+            actionPending: _actionPending,
+            actionMessage: _actionMessage,
             child: Builder(builder: widget.builder),
           ),
         ),

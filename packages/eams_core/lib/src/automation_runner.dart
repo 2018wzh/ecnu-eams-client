@@ -12,7 +12,7 @@ enum TaskPhase {
   failed,
   uncertain,
   cancelled,
-  available
+  available,
 }
 
 class TaskUpdate {
@@ -51,7 +51,8 @@ class TaskUpdate {
       attempts: json['attempts'] as int,
       requestId: json['requestId'] as String?,
       action: json['action'] as String,
-      timestamp: DateTime.parse(json['timestamp'] as String));
+      timestamp: DateTime.parse(json['timestamp'] as String),
+  );
 }
 
 typedef TaskObserver = Future<void> Function(TaskUpdate update);
@@ -69,14 +70,74 @@ class AutomationRunner {
   CancellationToken? _activeAction;
   int? _activeLesson;
   bool _running = false;
+  final Duration keepAliveInterval;
+  final Stopwatch _sessionClock = Stopwatch();
+  Duration _nextKeepAlive = Duration.zero;
 
   AutomationRunner(
       {required this.api,
       required this.config,
       required this.onUpdate,
       this.monitorOnly = false,
-      Map<int, TaskUpdate>? initialStates})
-      : states = {...?initialStates};
+    this.keepAliveInterval = const Duration(minutes: 5),
+    Map<int, TaskUpdate>? initialStates,
+  }) : states = {...?initialStates} {
+    if (keepAliveInterval <= Duration.zero) {
+      throw ArgumentError.value(keepAliveInterval, 'keepAliveInterval');
+    }
+  }
+
+  Future<void> _keepAliveIfDue() async {
+    cancellation.throwIfCancelled();
+    if (_sessionClock.elapsed < _nextKeepAlive) return;
+    try {
+      final renewed = await api.keepAlive(
+        config.studentId,
+        cancellation: cancellation,
+      );
+      cancellation.throwIfCancelled();
+      _nextKeepAlive = _sessionClock.elapsed + keepAliveInterval;
+      for (final target in config.targets) {
+        final state = states[target.lessonId];
+        if (!_removed.contains(target.lessonId) &&
+            (state?.phase == TaskPhase.waiting ||
+                state?.phase == TaskPhase.available)) {
+          await _emit(
+            target.lessonId,
+            state!.phase,
+            renewed ? 'Token 续期成功，身份检查通过' : '会话保活检查通过（无门户会话，不能延长 Token 有效期）',
+            action: 'session',
+          );
+        }
+      }
+    } on OperationCancelled {
+      rethrow;
+    } catch (error) {
+      for (final target in config.targets) {
+        final phase = states[target.lessonId]?.phase;
+        if (phase == TaskPhase.waiting || phase == TaskPhase.available) {
+          await _emit(target.lessonId, TaskPhase.failed, '会话保活失败，任务停止：$error');
+        }
+      }
+      throw StateError('会话维护失败，任务停止（${error.runtimeType}）');
+    }
+  }
+
+  // Serial maintenance also covers scheduled starts and retry/interval waits.
+  // No detached timer can race with submission or survive cancellation.
+  Future<void> _wait(Duration duration) async {
+    final deadline = _sessionClock.elapsed + duration;
+    while (_sessionClock.elapsed < deadline) {
+      cancellation.throwIfCancelled();
+      await _keepAliveIfDue();
+      final remaining = deadline - _sessionClock.elapsed;
+      final maintenance = _nextKeepAlive - _sessionClock.elapsed;
+      await cancellation.delay(
+        remaining < maintenance ? remaining : maintenance,
+      );
+    }
+    cancellation.throwIfCancelled();
+  }
 
   void stop() {
     cancellation.cancel();
@@ -91,12 +152,19 @@ class AutomationRunner {
 
   Future<void> _emit(int id, TaskPhase phase, String message,
       {int? attempts,
-      String? requestId,
-      List<Map<String, dynamic>>? selectedLessons}) async {
-    final update = TaskUpdate(id, phase, message,
+      String action = 'add',
+    String? requestId,
+    List<Map<String, dynamic>>? selectedLessons,
+  }) async {
+    final update = TaskUpdate(
+      id,
+      phase,
+      message,
+      action: action,
         attempts: attempts ?? states[id]?.attempts ?? 0,
         requestId: requestId,
-        selectedLessons: selectedLessons);
+        selectedLessons: selectedLessons,
+    );
     states[id] = update;
     // Persistence is part of submission: a failed checkpoint stops the runner.
     await onUpdate(update);
@@ -106,7 +174,16 @@ class AutomationRunner {
     if (_running) throw StateError('任务已在运行');
     config.validate();
     _running = true;
+    _sessionClock
+      ..reset()
+      ..start();
+    _nextKeepAlive = keepAliveInterval;
     try {
+      final autoRenew = await api.getPortalSession() != null;
+      if (!checkOnly && autoRenew) {
+        await api.keepAlive(config.studentId, cancellation: cancellation);
+        _nextKeepAlive = _sessionClock.elapsed + keepAliveInterval;
+      }
       final ids = await api.getStudentID();
       cancellation.throwIfCancelled();
       if (!ids.contains(config.studentId)) {
@@ -137,14 +214,16 @@ class AutomationRunner {
         throw StateError('已超过选课截止时间');
       }
       final selected =
-          await api.getSelectedLessons(config.turnId, config.studentId);
+          await api.getSelectedLessons(config.turnId, config.studentId,
+      );
       final selectedIds = selected.map((v) => v['id']).toSet();
       final all = await api.queryLessons(
           studentID: config.studentId,
           turnID: config.turnId,
           semesterID: config.semesterId,
           ids: config.targets.map((t) => t.lessonId).toList(),
-          pageSize: 100);
+          pageSize: 100,
+      );
       final lessons = (all['lessons'] as List).cast<Map>();
       final visibleIds = lessons.map((v) => v['id']).toSet();
       cancellation.throwIfCancelled();
@@ -154,7 +233,8 @@ class AutomationRunner {
         if (_removed.contains(id)) continue;
         if (selectedIds.contains(id)) {
           await _emit(id, TaskPhase.succeeded, '已在已选课程中',
-              selectedLessons: selected);
+              selectedLessons: selected,
+          );
           continue;
         }
         final previous = states[id]?.phase;
@@ -167,11 +247,13 @@ class AutomationRunner {
           throw StateError('目标课程 $id 不属于当前可查询轮次');
         }
         pending.add(target);
-        await _emit(id, TaskPhase.waiting, checkOnly ? '配置及身份检查通过' : '等待选课');
+        await _emit(id, TaskPhase.waiting, checkOnly ? '配置及身份检查通过' : autoRenew
+              ? '等待选课（自动续期已启用）'
+              : '等待选课（仅保活检查，Token 过期需重新登录）',
+        );
       }
       if (checkOnly || pending.isEmpty) return;
-      await cancellation
-          .delay(effectiveStart.difference(serverTime.add(clock.elapsed)));
+      await _wait(effectiveStart.difference(serverTime.add(clock.elapsed)));
       var consecutiveFailures = 0;
       final transientFailures = <int, int>{};
       final notified = <int>{};
@@ -182,6 +264,7 @@ class AutomationRunner {
         if (!serverTime.add(clock.elapsed).isBefore(end)) {
           throw StateError('选课轮次已截止，任务停止');
         }
+        await _keepAliveIfDue();
         try {
           final available = await api.queryLessons(
               studentID: config.studentId,
@@ -190,7 +273,8 @@ class AutomationRunner {
               ids: pending.map((t) => t.lessonId).toList(),
               canSelect: 1,
               hasCount: true,
-              pageSize: 100);
+              pageSize: 100,
+          );
           cancellation.throwIfCancelled();
           final eligible = (available['lessons'] as List)
               .cast<Map>()
@@ -199,6 +283,7 @@ class AutomationRunner {
           consecutiveFailures = 0;
           for (final target in List<AutomationTarget>.from(pending)) {
             cancellation.throwIfCancelled();
+            await _keepAliveIfDue();
             final id = target.lessonId;
             if (_removed.contains(id)) continue;
             if (!eligible.contains(id)) {
@@ -218,12 +303,14 @@ class AutomationRunner {
             _activeLesson = id;
             final action = _activeAction = CancellationToken();
             await _emit(id, TaskPhase.submitting, '正在验证并提交',
-                attempts: attempts);
+                attempts: attempts,
+            );
             if (cancellation.isCancelled || _removed.contains(id))
               action.cancel();
             final result = await api.addCourse(
                 config.studentId, config.turnId, id, target.virtualCost,
-                polling: config.polling, cancellation: action);
+                polling: config.polling, cancellation: action,
+            );
             _activeAction = null;
             _activeLesson = null;
             var phase = switch (result.outcome) {
@@ -242,7 +329,8 @@ class AutomationRunner {
                 attempts: attempts,
                 requestId: result.requestId,
                 selectedLessons:
-                    result.success ? result.selectedLessons : null);
+                    result.success ? result.selectedLessons : null,
+            );
             if (result.authExpired ||
                 result.outcome == ActionOutcome.uncertain) {
               throw StateError(result.message);
@@ -253,10 +341,11 @@ class AutomationRunner {
             if (result.outcome == ActionOutcome.retryable &&
                 phase != TaskPhase.failed) {
               final minimum = const Duration(seconds: 5);
-              await cancellation.delay(
+              await _wait(
                   result.retryAfter != null && result.retryAfter! > minimum
                       ? result.retryAfter!
-                      : minimum);
+                      : minimum,
+              );
             }
           }
         } on ApiException catch (e) {
@@ -269,26 +358,27 @@ class AutomationRunner {
               : backoff;
           for (final target in pending) {
             await _emit(target.lessonId, TaskPhase.waiting,
-                '$e；${delay.inSeconds} 秒后重试');
+                '$e；${delay.inSeconds} 秒后重试',
+            );
           }
-          await cancellation.delay(delay);
+          await _wait(delay);
         } on TimeoutException catch (e) {
           consecutiveFailures++;
           if (consecutiveFailures >= 5) rethrow;
           for (final target in pending) {
             await _emit(target.lessonId, TaskPhase.waiting, e.toString());
           }
-          await cancellation.delay(Duration(seconds: 1 << consecutiveFailures));
+          await _wait(Duration(seconds: 1 << consecutiveFailures));
         } on http.ClientException catch (e) {
           consecutiveFailures++;
           if (consecutiveFailures >= 5) rethrow;
           for (final target in pending) {
             await _emit(target.lessonId, TaskPhase.waiting, e.toString());
           }
-          await cancellation.delay(Duration(seconds: 1 << consecutiveFailures));
+          await _wait(Duration(seconds: 1 << consecutiveFailures));
         }
         if (once || pending.isEmpty) break;
-        await cancellation.delay(config.interval);
+        await _wait(config.interval);
       }
     } on OperationCancelled {
       // Keep committed/uncertain results visible; only unsubmitted work stops.
@@ -299,6 +389,7 @@ class AutomationRunner {
         }
       }
     } finally {
+      _sessionClock.stop();
       _activeAction = null;
       _activeLesson = null;
       _running = false;

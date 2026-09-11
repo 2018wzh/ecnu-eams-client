@@ -1,8 +1,15 @@
+import 'package:eams_core/eams_core.dart';
+
 class DesktopLoginResult {
   final String? authorization;
+  final PortalSession? portalSession;
   final String? errorMessage;
 
-  const DesktopLoginResult({this.authorization, this.errorMessage});
+  const DesktopLoginResult({
+    this.authorization,
+    this.errorMessage,
+    this.portalSession,
+  });
 
   bool get success => authorization != null && authorization!.isNotEmpty;
 }

@@ -8,6 +8,7 @@ import 'cancellation.dart';
 import 'course_page.dart';
 import 'lesson_search.dart';
 import 'auth_token_normalizer.dart';
+import 'portal_session.dart';
 
 typedef AuthorizationProvider = Future<String?> Function();
 
@@ -29,12 +30,21 @@ class ApiService {
   String? _authorization;
   final http.Client _client;
   final AuthorizationProvider? _authorizationProvider;
+  final Future<PortalSession?> Function()? portalSessionProvider;
+  final Future<void> Function(String previous, String next)?
+  onAuthorizationRenewed;
+  PortalSession? _portalSession;
+  bool get hasAuthorizationProvider => _authorizationProvider != null;
   final Duration requestTimeout;
   bool _actionInFlight = false;
+  Completer<void>? _actionFinished;
+  Future<void>? _renewalInFlight;
 
   ApiService({
     http.Client? client,
     AuthorizationProvider? authorizationProvider,
+    this.portalSessionProvider,
+    this.onAuthorizationRenewed,
     this.requestTimeout = const Duration(seconds: 10),
   })  : _client = client ?? http.Client(),
         _authorizationProvider = authorizationProvider;
@@ -44,6 +54,11 @@ class ApiService {
   }
 
   void clearAuthorization() => _authorization = null;
+  void setPortalSession(PortalSession? session) => _portalSession = session;
+  Future<PortalSession?> getPortalSession() async =>
+      portalSessionProvider != null
+      ? await portalSessionProvider!()
+      : _portalSession;
   void close() => _client.close();
 
   Future<String?> _getAuthorization() async {
@@ -98,7 +113,8 @@ class ApiService {
         .timeout(budget, onTimeout: () {
       abort.complete();
       throw TimeoutException('请求超时: $endpoint', budget);
-    });
+    },
+        );
 
     if (response.statusCode != 200) {
       final seconds = int.tryParse(response.headers['retry-after'] ?? '');
@@ -113,14 +129,16 @@ class ApiService {
               ? '登录已过期或无权访问，请重新登录（HTTP ${response.statusCode}）'
               : 'HTTP ${response.statusCode}: $endpoint',
           statusCode: response.statusCode,
-          retryAfter: retryAfter);
+          retryAfter: retryAfter,
+      );
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (data['result'] != 0) {
       throw ApiException(
-          AuthTokenNormalizer.redact((data['message'] ?? 'API错误').toString())
-              .replaceAll(headers['Authorization']!, '[REDACTED]'));
+          AuthTokenNormalizer.redact((data['message'] ?? 'API错误').toString(),
+        ).replaceAll(headers['Authorization']!, '[REDACTED]'),
+      );
     }
 
     return data['data'];
@@ -199,7 +217,8 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> getSimplestLessons(int turnID) async {
     final rows = await _requestList(
-      'GET', '/student/course-select/simplest-lessons/$turnID');
+      'GET', '/student/course-select/simplest-lessons/$turnID',
+    );
     return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
   }
 
@@ -232,11 +251,13 @@ class ApiService {
     int pageSize = 20,
   }) async {
     var queryIds = ids;
-    if ([courseNameOrCode, lessonNameOrCode, teacherNameOrCode]
+    if ([courseNameOrCode, lessonNameOrCode, teacherNameOrCode,
+    ]
         .any((term) => term.trim().isNotEmpty)) {
       queryIds = matchLessonIds(await getSimplestLessons(turnID),
         course: courseNameOrCode, lesson: lessonNameOrCode,
-        teacher: teacherNameOrCode, ids: ids);
+        teacher: teacherNameOrCode, ids: ids,
+      );
     }
     final body = {
       'turnId': turnID,
@@ -294,7 +315,9 @@ class ApiService {
 
   Future<Map<String, dynamic>> getCountInfo(int lessonID) async =>
       CourseCounts.validateDetail(await _requestMap(
-        'GET', '/student/course-select/count-info?lessonId=$lessonID'));
+        'GET', '/student/course-select/count-info?lessonId=$lessonID',
+        ),
+      );
 
   Future<Map<String, String>> getBatchCountInfo(List<int> lessonIDs) async {
     final data = await _requestMap(
@@ -331,7 +354,8 @@ class ApiService {
     CancellationToken? cancellation,
   }) =>
       _courseAction(true, studentID, turnID, lessonID, virtualCost,
-          polling ?? PollingConfig.defaults, cancellation);
+          polling ?? PollingConfig.defaults, cancellation,
+  );
 
   Future<CourseActionResult> dropCourse(
     int studentID,
@@ -341,7 +365,8 @@ class ApiService {
     CancellationToken? cancellation,
   }) =>
       _courseAction(false, studentID, turnID, lessonID, 0,
-          polling ?? PollingConfig.defaults, cancellation);
+          polling ?? PollingConfig.defaults, cancellation,
+  );
 
   Future<CourseActionResult> _courseAction(
     bool add,
@@ -352,10 +377,24 @@ class ApiService {
     PollingConfig polling,
     CancellationToken? cancellation,
   ) async {
+    try {
+      while (_renewalInFlight != null) {
+        await _renewalInFlight;
+      }
+      cancellation?.throwIfCancelled();
+    } on OperationCancelled {
+      return CourseActionResult.failure(
+        '已停止',
+        outcome: ActionOutcome.cancelled,
+      );
+    } catch (error) {
+      return CourseActionResult.failure('会话维护失败，未提交（${error.runtimeType}）');
+    }
     if (_actionInFlight) {
       return CourseActionResult.failure('另一项选退课操作尚未结束');
     }
     _actionInFlight = true;
+    _actionFinished = Completer<void>();
     final watch = Stopwatch()..start();
     var attempts = 0;
     var submitted = false;
@@ -373,15 +412,19 @@ class ApiService {
       'coursePackAssoc': null,
     };
     CourseActionResult failure(String message, ActionOutcome outcome,
-            {Duration? retryAfter}) =>
+            {Duration? retryAfter,
+    }) =>
         CourseActionResult.failure(message,
             outcome: outcome,
             requestId: requestID,
             attempts: attempts,
             elapsedMs: watch.elapsedMilliseconds,
-            retryAfter: retryAfter);
+            retryAfter: retryAfter,
+    );
     Future<CourseActionResult> reconcile(
-        Map<String, dynamic> results, String reason) async {
+      Map<String, dynamic> results,
+      String reason,
+    ) async {
       try {
         final selected = await getSelectedLessons(turnID, studentID);
         final exists = selected.any((course) => course['id'] == lessonID);
@@ -391,13 +434,15 @@ class ApiService {
               lessonResults: results,
               attempts: attempts,
               elapsedMs: watch.elapsedMilliseconds,
-              selectedLessons: selected);
+              selectedLessons: selected,
+          );
         }
         // Absence does not prove that a timed-out write will never commit.
         return failure('$reason；结果尚未确认，请在官网核对后再运行', ActionOutcome.uncertain);
       } catch (e) {
         return failure(
-            '$reason；核对已选课程失败: $e。请在官网确认结果', ActionOutcome.uncertain);
+            '$reason；核对已选课程失败: $e。请在官网确认结果', ActionOutcome.uncertain,
+        );
       }
     }
 
@@ -409,16 +454,18 @@ class ApiService {
                   ? addBody
                   : {
                       ...baseBody,
-                      'lessonAssocSet': [lessonID]
-                    },
-              cancellation: cancellation);
+                      'lessonAssocSet': [lessonID],
+              },
+        cancellation: cancellation,
+      );
       if (predicateID is! String || predicateID.isEmpty) {
         throw const FormatException('验证请求未返回有效请求 ID');
       }
       requestID = predicateID;
       final predicate = await _pollResponse(
           'predicate', studentID, predicateID, polling,
-          cancellation: cancellation, onAttempt: () => attempts++);
+          cancellation: cancellation, onAttempt: () => attempts++,
+      );
       if (predicate['success'] != true) {
         return failure(_resultError(predicate), ActionOutcome.rejected);
       }
@@ -432,15 +479,17 @@ class ApiService {
               : {
                   ...baseBody,
                   'lessonAssocs': [lessonID],
-                  'coursePackAssoc': null
-                },
-          cancellation: cancellation);
+                  'coursePackAssoc': null,
+              },
+        cancellation: cancellation,
+      );
       if (id is! String || id.isEmpty) {
         throw const FormatException('选退课请求未返回有效请求 ID');
       }
       requestID = id;
       final result = await _pollResponse('add-drop', studentID, id, polling,
-          onAttempt: () => attempts++);
+          onAttempt: () => attempts++,
+      );
       if (result['success'] != true) {
         return failure(_resultError(result), ActionOutcome.rejected);
       }
@@ -461,7 +510,8 @@ class ApiService {
               : e.retryable
                   ? ActionOutcome.retryable
                   : ActionOutcome.rejected,
-          retryAfter: e.retryAfter);
+          retryAfter: e.retryAfter,
+      );
     } on TimeoutException catch (e) {
       if (submitted) return await reconcile({}, e.toString());
       return failure(e.toString(), ActionOutcome.retryable);
@@ -473,13 +523,16 @@ class ApiService {
       return failure(e.toString(), ActionOutcome.rejected);
     } finally {
       _actionInFlight = false;
+      _actionFinished!.complete();
+      _actionFinished = null;
     }
   }
 
   String _resultError(Map<String, dynamic> result) =>
       AuthTokenNormalizer.redact(
           (result['errorMessage'] ?? result['exception'] ?? '选退课验证失败')
-              .toString());
+              .toString(),
+      );
 
   Future<Map<String, dynamic>> _pollResponse(
     String type,
@@ -496,7 +549,8 @@ class ApiService {
       onAttempt();
       final data = await _request(
           'GET', '/student/course-select/$type-response/$studentID/$requestID',
-          cancellation: cancellation, timeout: config.timeout - watch.elapsed);
+          cancellation: cancellation, timeout: config.timeout - watch.elapsed,
+      );
       if (data is Map<String, dynamic>) return data;
       if (data != null) throw const FormatException('选退课结果格式异常');
       final remaining = config.timeout - watch.elapsed;
@@ -507,8 +561,136 @@ class ApiService {
     throw TimeoutException('等待选退课结果超时', config.timeout);
   }
 
-  Future<List<int>> getStudentID() async {
-    final data = await _requestList('GET', '/student/course-select/students');
+  Future<List<int>> getStudentID({CancellationToken? cancellation}) async {
+    final data = await _request(
+      'GET',
+      '/student/course-select/students',
+      cancellation: cancellation,
+    );
     return List<int>.from(data);
+  }
+
+  /// Renews using the portal session when present; otherwise checks identity.
+  /// Returns true only when a replacement token was validated and saved.
+  Future<bool> keepAlive(
+    int studentId, {
+    CancellationToken? cancellation,
+  }) async {
+    cancellation?.throwIfCancelled();
+    final session = await getPortalSession();
+    if (session != null) {
+      final existing = _renewalInFlight;
+      if (existing != null) {
+        await existing;
+        cancellation?.throwIfCancelled();
+        if (!(await getStudentID(
+          cancellation: cancellation,
+        )).contains(studentId)) {
+          throw StateError('续期后的学生身份不一致，任务停止');
+        }
+        return true;
+      }
+      final renewal = _renewAuthorization(session, studentId, cancellation);
+      _renewalInFlight = renewal;
+      try {
+        await renewal;
+      } finally {
+        _renewalInFlight = null;
+      }
+      return true;
+    }
+    final data = await _request(
+      'GET',
+      '/student/course-select/students',
+      cancellation: cancellation,
+    );
+    cancellation?.throwIfCancelled();
+    if (!List<int>.from(data as List).contains(studentId)) {
+      throw StateError('保活检查发现登录学生已改变，任务停止');
+    }
+    return false;
+  }
+
+  Future<void> _renewAuthorization(
+    PortalSession session,
+    int studentId,
+    CancellationToken? cancellation,
+  ) async {
+    if (_actionFinished != null) await _actionFinished!.future;
+    cancellation?.throwIfCancelled();
+    if (_authorizationProvider != null && onAuthorizationRenewed == null) {
+      throw StateError('凭据提供器缺少续期保存回调');
+    }
+    final previous = await getAuthorization();
+    cancellation?.throwIfCancelled();
+    final abort = Completer<void>();
+    final request =
+        http.AbortableRequest(
+            'POST',
+            Uri.parse('https://byyt.ecnu.edu.cn/portal-service/token/renew'),
+            abortTrigger: abort.future,
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': previous,
+            'Cookie': session.cookieHeader,
+          })
+          ..body = jsonEncode({'token': previous});
+    final response = await _client
+        .send(request)
+        .then(http.Response.fromStream)
+        .timeout(
+          requestTimeout,
+          onTimeout: () {
+            abort.complete();
+            throw TimeoutException('Token 续期超时', requestTimeout);
+          },
+        );
+    cancellation?.throwIfCancelled();
+    if (response.statusCode != 200 ||
+        !(response.headers['content-type'] ?? '').contains(
+          'application/json',
+        )) {
+      throw ApiException(
+        '门户会话失效，无法续期，请重新网页登录并导出配置',
+        statusCode: response.statusCode == 200 ? 401 : response.statusCode,
+      );
+    }
+    // Never include the response body in errors: it may contain credentials.
+    Object? decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      throw const FormatException('Token 续期响应不是有效 JSON');
+    }
+    if (decoded is! Map ||
+        decoded['code'] != 0 ||
+        decoded['data'] is! Map ||
+        decoded['data']['token'] is! String) {
+      throw const ApiException('Token 续期被拒绝，请重新网页登录', statusCode: 401);
+    }
+    final next = AuthTokenNormalizer.normalize(
+      decoded['data']['token'] as String,
+    );
+    // Verify the replacement before storing it or allowing another selection.
+    final verifier = ApiService(client: _client, requestTimeout: requestTimeout)
+      ..setAuthorization(next);
+    final ids = await verifier.getStudentID(cancellation: cancellation);
+    cancellation?.throwIfCancelled();
+    if (!ids.contains(studentId)) throw StateError('续期后的学生身份不一致，任务停止');
+    if (await getAuthorization() != previous) {
+      throw StateError('续期期间登录已改变，任务停止');
+    }
+    cancellation?.throwIfCancelled();
+    if (onAuthorizationRenewed != null) {
+      await onAuthorizationRenewed!(previous, next);
+    }
+    if (_authorizationProvider == null) {
+      _authorization = next;
+    } else {
+      _authorization = null;
+    }
   }
 }

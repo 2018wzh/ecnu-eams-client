@@ -30,7 +30,9 @@ class AuthProvider with ChangeNotifier {
         throw StateError('清除旧登录凭据失败');
       }
       final token = await credentialStorage.read(key: 'authorization');
-      if (token != null && token.isNotEmpty) await setAuthorization(token);
+      if (token != null && token.isNotEmpty) {
+        await setAuthorization(token, portalSession: await readPortalSession());
+      }
     } catch (e) {
       _errorMessage = '恢复登录失败，请重试: $e';
     } finally {
@@ -39,13 +41,19 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> setAuthorization(String authorization) async {
+  Future<void> setAuthorization(String authorization, {
+    PortalSession? portalSession,
+  }) async {
     final normalized = AuthTokenNormalizer.normalize(authorization);
     _apiService.setAuthorization(normalized);
     try {
       await loadStudentInfo();
       if (_studentID == null) throw StateError('未找到学生信息');
       await credentialStorage.write(key: 'authorization', value: normalized);
+      await writePortalSession(portalSession);
+      if (_apiService.hasAuthorizationProvider) {
+        _apiService.clearAuthorization();
+      }
       _isAuthenticated = true;
       notifyListeners();
     } catch (e) {
@@ -56,6 +64,7 @@ class AuthProvider with ChangeNotifier {
       _apiService.clearAuthorization();
       if (e is ApiException && e.authExpired) {
         await credentialStorage.delete(key: 'authorization');
+        await writePortalSession(null);
       }
       notifyListeners();
       rethrow;
@@ -116,6 +125,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> logout() async {
     await credentialStorage.delete(key: 'authorization');
+    await writePortalSession(null);
     _apiService.clearAuthorization();
     _isAuthenticated = false;
     _studentID = null;

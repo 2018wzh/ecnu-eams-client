@@ -136,7 +136,8 @@ Future<int> runCli(
     }
     final config = AutomationConfig.fromBase64(args['config'] as String);
     lease = await ExecutionLease.acquire(config.studentId);
-    api = (apiFactory ?? ApiService.new)()..setAuthorization(config.token);
+    api = (apiFactory ?? ApiService.new)()..setAuthorization(config.token)
+      ..setPortalSession(config.portalSession);
     final directory = stateDirectory ?? defaultStateDirectory();
     final stateFile = File(
       '${directory.path}/${config.studentId}-${config.turnId}-${config.semesterId}.state.json',
@@ -199,7 +200,7 @@ Future<int> runCli(
         await temp.rename(stateFile.path);
       }
       final line = '${update.phase.name}: ${update.message}';
-      if (lastPrinted[update.lessonId] != line) {
+      if (update.action == 'session' || lastPrinted[update.lessonId] != line) {
         stdout.writeln(
           '${update.timestamp.toIso8601String()} '
           '[${names[update.lessonId]}] $line '

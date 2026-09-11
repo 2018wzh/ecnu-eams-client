@@ -2,13 +2,15 @@ import 'dart:convert';
 import 'config_codec.dart';
 import 'auth_token_normalizer.dart';
 import 'polling_config.dart';
+import 'portal_session.dart';
 
 class AutomationTarget {
   final int lessonId;
   final String name;
   final int virtualCost;
   const AutomationTarget(
-      {required this.lessonId, required this.name, this.virtualCost = 0});
+      {required this.lessonId, required this.name, this.virtualCost = 0,
+  });
 
   factory AutomationTarget.fromJson(Map<String, dynamic> json) {
     final name = json['name'];
@@ -31,6 +33,7 @@ class AutomationTarget {
 
 class AutomationConfig {
   final String token;
+  final PortalSession? portalSession;
   final int studentId;
   final int turnId;
   final int semesterId;
@@ -41,13 +44,15 @@ class AutomationConfig {
 
   const AutomationConfig(
       {required this.token,
+    this.portalSession,
       required this.studentId,
       required this.turnId,
       required this.semesterId,
       required this.targets,
       this.interval = const Duration(milliseconds: 500),
       this.startAt,
-      this.polling = PollingConfig.defaults});
+      this.polling = PollingConfig.defaults,
+  });
 
   factory AutomationConfig.fromJson(Map<String, dynamic> json) {
     if (json['version'] != 1) throw const FormatException('不支持的配置版本');
@@ -60,7 +65,8 @@ class AutomationConfig {
     }
     final targets = raw
         .map((v) =>
-            AutomationTarget.fromJson(Map<String, dynamic>.from(v as Map)))
+            AutomationTarget.fromJson(Map<String, dynamic>.from(v as Map)),
+        )
         .toList();
     if (targets.map((v) => v.lessonId).toSet().length != targets.length) {
       throw const FormatException('目标课程不能重复');
@@ -76,19 +82,28 @@ class AutomationConfig {
     final poll = json['polling'] as Map<String, dynamic>;
     return AutomationConfig(
       token: AuthTokenNormalizer.normalize(json['token'] as String),
+      portalSession: json['portalSession'] == null
+          ? null
+          : PortalSession.fromJson(json['portalSession']),
       studentId: positiveInt(json['studentId'], 'studentId'),
       turnId: positiveInt(json['turnId'], 'turnId'),
       semesterId: positiveInt(json['semesterId'], 'semesterId'),
       interval: Duration(
           milliseconds:
-              boundedInt(json['intervalMs'], 'intervalMs', 200, 60000)),
+              boundedInt(json['intervalMs'], 'intervalMs', 200, 60000),
+      ),
       polling: PollingConfig(
           timeout: Duration(
               milliseconds: boundedInt(
-                  poll['timeoutMs'], 'polling.timeoutMs', 3000, 30000)),
+                  poll['timeoutMs'], 'polling.timeoutMs', 3000, 30000,
+          ),
+        ),
           interval: Duration(
               milliseconds: boundedInt(
-                  poll['intervalMs'], 'polling.intervalMs', 200, 2000))),
+                  poll['intervalMs'], 'polling.intervalMs', 200, 2000,
+          ),
+        ),
+      ),
       startAt: start,
       targets: List.unmodifiable(targets),
     );
@@ -97,6 +112,7 @@ class AutomationConfig {
   Map<String, dynamic> toJson() => {
         'version': 1,
         'token': token,
+    if (portalSession != null) 'portalSession': portalSession!.toJson(),
         'studentId': studentId,
         'turnId': turnId,
         'semesterId': semesterId,
@@ -133,6 +149,6 @@ int boundedInt(dynamic value, String name, int min, int max) {
 DateTime parseSchoolTime(String value) {
   final text = value.trim().replaceFirst(' ', 'T');
   return DateTime.parse(
-          RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(text) ? text : '$text+08:00')
-      .toUtc();
+          RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(text) ? text : '$text+08:00',
+  ).toUtc();
 }

@@ -6,29 +6,49 @@ const browserLoginScript = r'''
 (() => {
   const result = {origin: location.origin, ready: document.readyState, token: null};
   if (location.origin !== 'https://byyt.ecnu.edu.cn') return result;
-  // The current portal uses js-cookie with the deployed TOKEN_KEY.
-  const cookieKeys = ['${TOKEN_KEY}', 'Admin-Token'];
-  for (const entry of document.cookie.split(';')) {
-    const separator = entry.indexOf('=');
-    if (separator < 0) continue;
-    const name = decodeURIComponent(entry.slice(0, separator).trim());
-    if (cookieKeys.includes(name)) {
+  result.documentsChecked = 0;
+  result.blockedFrames = 0;
+  result.source = null;
+  const valid = value => value && value.trim() && value !== 'null' && value !== 'undefined';
+  const visit = win => {
+    let origin;
+    try {
+      origin = win.location.origin;
+    } catch (error) {
+      if (error.name !== 'SecurityError') throw error;
+      result.blockedFrames++;
+      return false;
+    }
+    if (origin !== 'https://byyt.ecnu.edu.cn') return false;
+    result.documentsChecked++;
+    // The portal uses a session; only the student selection cookie is an API token.
+    for (const entry of win.document.cookie.split(';')) {
+      const separator = entry.indexOf('=');
+      if (separator < 0) continue;
+      const name = decodeURIComponent(entry.slice(0, separator).trim());
+      if (name !== 'cs-course-select-student-token') continue;
       const value = decodeURIComponent(entry.slice(separator + 1));
-      if (value && value !== 'null' && value !== 'undefined') {
+      if (valid(value)) {
         result.token = value;
-        return result;
+        result.source = 'selection-cookie';
+        return true;
       }
     }
-  }
-  for (const store of [localStorage, sessionStorage]) {
-    for (const key of ['authorization', 'Authorization', 'token', 'access_token']) {
-      const value = store.getItem(key);
-      if (value && value.trim() && value !== 'null' && value !== 'undefined') {
+    // The official portal hands the token to this specific app in its query.
+    if (win.location.pathname.startsWith('/course-selection/')) {
+      const value = new URLSearchParams(win.location.search).get('token');
+      if (valid(value)) {
         result.token = value;
-        return result;
+        result.source = 'selection-url';
+        return true;
       }
     }
-  }
+    for (let i = 0; i < win.frames.length; i++) {
+      if (visit(win.frames[i])) return true;
+    }
+    return false;
+  };
+  visit(window);
   return result;
 })()
 ''';

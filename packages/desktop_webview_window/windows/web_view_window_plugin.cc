@@ -302,7 +302,10 @@ void WebviewWindowPlugin::HandleMethodCall(
       result->Error("0", "webview window not ready");
       return;
     }
-    windows_[window_id]->GetWebView()->GetAllCookies(std::move(result));
+    const auto url_entry = arguments->find(flutter::EncodableValue("url"));
+    const auto url = url_entry == arguments->end()
+        ? std::wstring() : utf8_to_wide(std::get<std::string>(url_entry->second));
+    windows_[window_id]->GetWebView()->GetAllCookies(std::move(result), url);
   } else if (method_call.method_name() == "close") {
     auto *arguments =
         std::get_if<flutter::EncodableMap>(method_call.arguments());
@@ -313,6 +316,12 @@ void WebviewWindowPlugin::HandleMethodCall(
       return;
     }
     windows_.erase(window_id);
+    // Programmatic destruction clears GWLP_USERDATA before DestroyWindow, so
+    // WM_DESTROY cannot notify Dart. Emit the same event as a native close.
+    method_channel_->InvokeMethod(
+        "onWindowClose",
+        std::make_unique<flutter::EncodableValue>(flutter::EncodableMap{
+            {flutter::EncodableValue("id"), flutter::EncodableValue(window_id)}}));
     result->Success();
   } else if (method_call.method_name() == "evaluateJavaScript") {
     auto *arguments =
