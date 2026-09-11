@@ -1,6 +1,6 @@
 name: eams_core
 description: Shared ECNU course selection API and automation for GUI and CLI.
-version: 2.0.2
+version: 2.0.3
 publish_to: none
 executables:
   eams: eams

@@ -21,6 +21,63 @@ http.Response renewed() => http.Response(
 );
 
 void main() {
+  for (final invalidSession in [true, false]) {
+    test(
+      'empty 200 is expired only with explicit portal header: $invalidSession',
+      () async {
+        var requests = 0;
+        final api =
+            ApiService(
+                client: MockClient((_) async {
+                  requests++;
+                  return http.Response(
+                    '',
+                    200,
+                    headers: {if (invalidSession) 'session-invalid': 'true'},
+                  );
+                }),
+              )
+              ..setAuthorization('old-token')
+              ..setPortalSession(session);
+        addTearDown(api.close);
+        await expectLater(
+          api.keepAlive(1),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.authExpired, 'authExpired', invalidSession)
+                .having(
+                  (e) => e.message,
+                  'diagnostic',
+                  contains(invalidSession ? 'Session-Invalid: true' : '0 字节'),
+                ),
+          ),
+        );
+        expect(requests, 1);
+        expect(await api.getAuthorization(), 'old-token');
+      },
+    );
+  }
+  test(
+    'server failure preserves HTTP status instead of reporting expiry',
+    () async {
+      final api =
+          ApiService(
+              client: MockClient((_) async => http.Response('SECRET', 503)),
+            )
+            ..setAuthorization('old-token')
+            ..setPortalSession(session);
+      addTearDown(api.close);
+      await expectLater(
+        api.keepAlive(1),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 503)
+              .having((e) => e.authExpired, 'authExpired', false)
+              .having((e) => e.message, 'message', isNot(contains('SECRET'))),
+        ),
+      );
+    },
+  );
   test('quoted cookie values are valid and missing cookies are identified', () {
     final quoted = PortalSession.fromJson({
       'SESSION': '"session-value"',

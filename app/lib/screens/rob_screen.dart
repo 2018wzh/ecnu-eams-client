@@ -195,16 +195,12 @@ class _RobScreenState extends State<RobScreen> {
                   const SizedBox(height: 8),
                   Wrap(spacing: 8, children: [
                     OutlinedButton.icon(
-                        onPressed: courseProvider.robTargets.isEmpty
+                        onPressed: courseProvider.robTargets.isEmpty || courseProvider.isExporting
                             ? null
                             : () async {
                                 try {
-                                  await courseProvider.stopAllAndWait();
-                                  if (courseProvider.hasUncertainActions) {
-                                    throw StateError('存在未确认提交，请先核对结果后再导出');
-                                  }
                                   final config =
-                                      await courseProvider.buildRobConfig();
+                                      await courseProvider.exportRobConfig();
                                   if (context.mounted) {
                                     await showDialog<void>(
                                         context: context,
@@ -219,7 +215,8 @@ class _RobScreenState extends State<RobScreen> {
                                 }
                               },
                         icon: const Icon(Icons.terminal),
-                        label: const Text('停止并导出 CLI 配置')),
+                        label: Text(courseProvider.isExporting
+                            ? '正在验证登录…' : '停止并导出 CLI 配置')),
                     if (courseProvider.hasUncertainActions)
                       TextButton(
                           onPressed: () async {

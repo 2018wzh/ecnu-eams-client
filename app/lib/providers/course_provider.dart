@@ -40,6 +40,8 @@ class CourseProvider with ChangeNotifier {
   AutomationRunner? _robRunner, _monitorRunner;
   Future<void>? _robFuture, _monitorFuture, _actionFuture;
   CancellationToken? _manualCancellation;
+  CancellationToken? _exportCancellation;
+  bool _isExporting = false;
   Future<void> _writeTail = Future.value();
 
   List<Map<String, dynamic>> get courses => _courses;
@@ -49,6 +51,7 @@ class CourseProvider with ChangeNotifier {
   Map<String, Map<String, dynamic>> get courseCountInfo => _courseCountInfo;
   bool get isLoading => _isLoading;
   bool get isActing => _isActing;
+  bool get isExporting => _isExporting;
   CancellationToken? _robStartup, _monitorStartup;
   bool get isRobbing => _robStartup != null || _robRunner != null;
   bool get isMonitoring => _monitorStartup != null || _monitorRunner != null;
@@ -570,6 +573,41 @@ class CourseProvider with ChangeNotifier {
 
   Future<AutomationConfig> buildRobConfig() =>
       _config(_robTargets, _robInterval, _scheduledStartTime);
+
+  Future<AutomationConfig> exportRobConfig() async {
+    if (_isExporting) throw StateError('正在验证登录并导出配置');
+    _isExporting = true;
+    final epoch = _contextVersion;
+    _changed();
+    try {
+      await stopAllAndWait();
+      if (_disposed || epoch != _contextVersion) throw StateError('学生或轮次已改变');
+      if (hasUncertainActions) throw StateError('存在未确认提交，请先核对结果后再导出');
+      final cancellation = _exportCancellation = CancellationToken();
+      final config = await buildRobConfig();
+      cancellation.throwIfCancelled();
+      await _logService.write('cli_export', 'checking_session');
+      await _apiService.keepAlive(config.studentId, cancellation: cancellation);
+      cancellation.throwIfCancelled();
+      if (_disposed || epoch != _contextVersion) throw StateError('学生或轮次已改变');
+      final exported = await buildRobConfig();
+      cancellation.throwIfCancelled();
+      if (_disposed || epoch != _contextVersion) throw StateError('学生或轮次已改变');
+      await _logService.write('cli_export', 'session_checked');
+      cancellation.throwIfCancelled();
+      return exported;
+    } catch (error) {
+      await _logService.write('cli_export', 'session_check_failed', data: {
+        'type': error.runtimeType.toString(),
+        if (error is ApiException) 'statusCode': error.statusCode,
+      });
+      rethrow;
+    } finally {
+      _exportCancellation = null;
+      _isExporting = false;
+      _changed();
+    }
+  }
   Future<AutomationConfig> _config(List<Map<String, dynamic>> targets,
       Duration interval, DateTime? start,
   ) async {
@@ -739,6 +777,7 @@ class CourseProvider with ChangeNotifier {
     stopRob();
     stopMonitoring();
     _manualCancellation?.cancel();
+    _exportCancellation?.cancel();
     await Future.wait([
       if (_robFuture != null) _robFuture!,
       if (_monitorFuture != null) _monitorFuture!,
@@ -754,6 +793,7 @@ class CourseProvider with ChangeNotifier {
     _robRunner?.stop();
     _monitorRunner?.stop();
     _manualCancellation?.cancel();
+    _exportCancellation?.cancel();
     super.dispose();
   }
 }

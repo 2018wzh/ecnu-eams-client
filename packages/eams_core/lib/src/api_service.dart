@@ -649,13 +649,34 @@ class ApiService {
           },
         );
     cancellation?.throwIfCancelled();
-    if (response.statusCode != 200 ||
-        !(response.headers['content-type'] ?? '').contains(
-          'application/json',
-        )) {
+    // The portal signals expired sessions with HTTP 200, an empty body and
+    // Session-Invalid: true. Its own browser client checks this header first.
+    if (response.headers['session-invalid']?.trim().toLowerCase() == 'true') {
       throw ApiException(
-        '门户会话失效，无法续期，请重新网页登录并导出配置',
-        statusCode: response.statusCode == 200 ? 401 : response.statusCode,
+        '门户明确报告会话失效（Session-Invalid: true，HTTP ${response.statusCode}）；'
+        '选课 Token 尚未到期也不能续期，请重新网页登录并导出配置',
+        statusCode: 401,
+      );
+    }
+    if (response.statusCode != 200) {
+      throw ApiException(
+        '门户续期请求失败（HTTP ${response.statusCode}）',
+        statusCode: response.statusCode,
+      );
+    }
+    if (response.bodyBytes.isEmpty) {
+      throw const ApiException(
+        '门户续期返回空响应（HTTP 200，0 字节，未报告会话失效），无法确认续期结果',
+        statusCode: 200,
+      );
+    }
+    final mediaType = response.headers['content-type']
+        ?.split(';').first.trim().toLowerCase();
+    if (mediaType != 'application/json') {
+      throw ApiException(
+        '门户续期响应格式异常（HTTP 200，${response.bodyBytes.length} 字节，'
+        '${mediaType == null ? '缺少 Content-Type' : '非 JSON Content-Type'}）',
+        statusCode: 200,
       );
     }
     // Never include the response body in errors: it may contain credentials.
@@ -665,11 +686,15 @@ class ApiService {
     } on FormatException {
       throw const FormatException('Token 续期响应不是有效 JSON');
     }
-    if (decoded is! Map ||
-        decoded['code'] != 0 ||
-        decoded['data'] is! Map ||
+    if (decoded is! Map || decoded['code'] is! num) {
+      throw const FormatException('Token 续期响应缺少有效结果码');
+    }
+    if (decoded['code'] != 0) {
+      throw ApiException('门户拒绝 Token 续期（code=${decoded['code']}）');
+    }
+    if (decoded['data'] is! Map ||
         decoded['data']['token'] is! String) {
-      throw const ApiException('Token 续期被拒绝，请重新网页登录', statusCode: 401);
+      throw const FormatException('Token 续期成功响应缺少有效 Token');
     }
     final next = AuthTokenNormalizer.normalize(
       decoded['data']['token'] as String,
