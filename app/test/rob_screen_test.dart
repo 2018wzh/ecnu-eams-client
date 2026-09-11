@@ -1,4 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:ecnu_eams_client/services/app_log_service.dart';
 import 'package:ecnu_eams_client/providers/auth_provider.dart';
 import 'package:ecnu_eams_client/providers/course_provider.dart';
 import 'package:ecnu_eams_client/screens/rob_screen.dart';
@@ -8,6 +11,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class MemoryLog extends AppLogService {
+  final messages = <String>[];
+  @override
+  Future<void> write(
+    String event,
+    String message, {
+    Map<String, dynamic>? data,
+  }) async {
+    messages.add(message);
+  }
+}
 
 void main() {
   setUp(
@@ -24,7 +39,21 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final auth = AuthProvider();
-    final courses = CourseProvider();
+    var identityChecks = 0;
+    final api = ApiService(
+      client: MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(
+          request.url.path,
+          '/course-selection-api/api/v1/student/course-select/students',
+        );
+        identityChecks++;
+        return http.Response('{"result":0,"data":[1]}', 200);
+      }),
+    )..setAuthorization('test-token');
+    addTearDown(api.close);
+    final log = MemoryLog();
+    final courses = CourseProvider(apiService: api, logService: log);
     await courses.bindContext(1, 2, 3);
     for (final id in [4, 5]) {
       courses.addRobTarget({
@@ -74,6 +103,8 @@ void main() {
     expect(courses.robTargets.first['id'], 5);
     await tester.tap(find.text('停止并导出 CLI 配置'));
     await tester.pumpAndSettle();
+    expect(identityChecks, 1);
+    expect(log.messages, contains('session_checked'));
     await tester.tap(find.text('复制配置'));
     await tester.pumpAndSettle();
     final config = AutomationConfig.fromBase64(copied!);
